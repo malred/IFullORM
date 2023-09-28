@@ -165,11 +165,10 @@ public class t {
     }
 
     // 基本CRUD接口的代理实现测试
-
     @Test
     public void testSelectProxy() {
-//        UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
-        UserRepository mapper = Operate.getMapper(UserRepository.class);
+        UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
+//        UserRepository mapper = Operate.getMapper(UserRepository.class);
         List<TbUser> all = mapper.findAll();
         System.out.println(all);
 
@@ -212,8 +211,8 @@ public class t {
     // 用户定义的注解的代理实现测试
     @Test
     public void testSelectAnnotation() {
-//        UserRepository mapper = Operate.getMapper(UserRepository.class);
-        UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
+        UserRepository mapper = Operate.getMapper(UserRepository.class);
+//        UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
 
         TbUser user = mapper.selectOneByUsername("张三");
         System.out.println(user);

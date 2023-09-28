@@ -4,9 +4,6 @@ import entity.ProductAndUser;
 import org.malred.annotations.*;
 import entity.TbUser;
 import org.malred.repository.BaseCRUDRepository;
-import org.malred.utils.SqlBuilder;
-import org.malred.utils.SqlCompareIdentity;
-import org.malred.utils.SqlJoinType;
 
 import java.util.List;
 

@@ -204,7 +204,7 @@ public class Operate {
                 if (genericReturnType instanceof ParameterizedType) {
                     Type[] actualTypeArguments = ((ParameterizedType) genericReturnType).getActualTypeArguments();
                     for (Type parameterType : actualTypeArguments) {
-                        System.out.println(parameterType);
+//                        System.out.println(parameterType);
                         type = (Class<?>) parameterType;
                     }
                 } else {
@@ -329,18 +329,20 @@ public class Operate {
         Object proxyInstance = Proxy.newProxyInstance(Operate.class.getClassLoader(), new Class[]{mapperClass}, new InvocationHandler() {
             @Override
             public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-                //获取方法的返回值类型
-                Type genericReturnType = method.getGenericReturnType();
                 // 用户定义的方法的返回类型
                 Class<?> type = null;
-                if (genericReturnType instanceof ParameterizedType) {
-                    Type[] actualTypeArguments = ((ParameterizedType) genericReturnType).getActualTypeArguments();
-                    for (Type parameterType : actualTypeArguments) {
-                        System.out.println(parameterType);
-                        type = (Class<?>) parameterType;
+                //获取方法的返回值类型
+                Type genericReturnType = method.getGenericReturnType();
+                if (!method.getName().equals("findAll") && !method.getName().equals("findById")) {
+                    if (genericReturnType instanceof ParameterizedType) {
+                        Type[] actualTypeArguments = ((ParameterizedType) genericReturnType).getActualTypeArguments();
+                        for (Type parameterType : actualTypeArguments) {
+                            System.out.println(parameterType);
+                            type = (Class<?>) parameterType;
+                        }
+                    } else {
+                        type = (Class<?>) genericReturnType;
                     }
-                } else {
-                    type = (Class<?>) genericReturnType;
                 }
                 // 拿到表名
                 Repository annotation = mapperClass.getAnnotation(Repository.class);
@@ -382,7 +384,6 @@ public class Operate {
                         }
                         paramVals[paramVals.length - 1] = parseClazz.idVal.toString();
                         return Operate.update(sql, paramVals);
-//                                return 1;
                     }
                     case "insert": {
                         ParseClazz parseClazz = parseObjectArgs(args);
