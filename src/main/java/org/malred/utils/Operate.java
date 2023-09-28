@@ -195,144 +195,124 @@ public class Operate {
      */
     public static <T> T getMapper(Class<?> mapperClass) {
         // 使用JDK动态代理为Dao接口生成代理对象,并返回
-        Object proxyInstance = Proxy.newProxyInstance(
-                Operate.class.getClassLoader(),
-                new Class[]{mapperClass},
-                new InvocationHandler() {
-                    @Override
-                    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-                        //获取方法的返回值类型
-                        Type genericReturnType = method.getGenericReturnType();
-                        Class<?> type = null;
-                        if (genericReturnType instanceof ParameterizedType) {
-                            Type[] actualTypeArguments = ((ParameterizedType) genericReturnType).getActualTypeArguments();
-                            for (Type parameterType : actualTypeArguments) {
-//                                System.out.println(parameterType);
-                                type = (Class<?>) parameterType;
-                            }
-                        } else {
-                            type = (Class<?>) genericReturnType;
-                        }
-                        // 拿到表名
-                        Repository annotation = mapperClass.getAnnotation(Repository.class);
-                        String tbName = annotation.value();
-                        // 拼装sql
+        Object proxyInstance = Proxy.newProxyInstance(Operate.class.getClassLoader(), new Class[]{mapperClass}, new InvocationHandler() {
+            @Override
+            public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+                //获取方法的返回值类型
+                Type genericReturnType = method.getGenericReturnType();
+                Class<?> type = null;
+                if (genericReturnType instanceof ParameterizedType) {
+                    Type[] actualTypeArguments = ((ParameterizedType) genericReturnType).getActualTypeArguments();
+                    for (Type parameterType : actualTypeArguments) {
+                        System.out.println(parameterType);
+                        type = (Class<?>) parameterType;
+                    }
+                } else {
+                    type = (Class<?>) genericReturnType;
+                }
+                // 拿到表名
+                Repository annotation = mapperClass.getAnnotation(Repository.class);
+                String tbName = annotation.value();
+                // 拼装sql
 //                        String sql = (String) Common.DefaultCRUDSql.get(method.getName());
 //                        System.out.println(sql);
-                        String sql = "";
-                        // 默认CRUD接口的代理方法
-                        switch (method.getName()) {
-                            case "findAll": {
-                                sql = SqlBuilder.build()
-                                        .tbName(tbName)
-                                        .select()
-                                        .sql();
-                                System.out.println("执行findAll方法");
-                                System.out.println("当前执行的sql语句: " + sql);
-                                return Operate.getList(type, sql);
-                            }
-                            case "findById": {
-                                sql = SqlBuilder.build()
-                                        .tbName(tbName)
-                                        .select()
-                                        .where("id", SqlCompareIdentity.EQ)
-                                        .sql();
-                                System.out.println("执行findById方法");
-                                System.out.println("当前执行的sql语句: " + sql);
-                                return Operate.get(type, sql, args);
-                            }
-                            case "update": {
-                                ParseClazz parseClazz = parseObjectArgs(args);
+                String sql = "";
+                // 默认CRUD接口的代理方法
+                switch (method.getName()) {
+                    case "findAll": {
+                        sql = SqlBuilder.build().tbName(tbName).select().sql();
+                        System.out.println("执行findAll方法");
+                        System.out.println("当前执行的sql语句: " + sql);
+                        return Operate.getList(type, sql);
+                    }
+                    case "findById": {
+                        sql = SqlBuilder.build().tbName(tbName).select().where("id", SqlCompareIdentity.EQ).sql();
+                        System.out.println("执行findById方法");
+                        System.out.println("当前执行的sql语句: " + sql);
+                        return Operate.get(type, sql, args);
+                    }
+                    case "update": {
+                        ParseClazz parseClazz = parseObjectArgs(args);
 
-                                String[] paramNames = new String[parseClazz.params.keySet().size()];
-                                for (int i = 0; i < parseClazz.params.keySet().toArray().length; i++) {
-                                    paramNames[i] = parseClazz.params.keySet().toArray()[i].toString();
-                                }
-                                sql = SqlBuilder.build()
-                                        .update(tbName, paramNames)
-                                        .where(parseClazz.idName, SqlCompareIdentity.EQ)
-                                        .sql();
-
-                                System.out.println("执行update方法");
-                                System.out.println("当前执行的sql语句: " + sql);
-
-                                String[] paramVals = new String[parseClazz.params.values().size() + 1];
-                                for (int i = 0; i < parseClazz.params.values().toArray().length; i++) {
-                                    paramVals[i] = parseClazz.params.values().toArray()[i].toString();
-//                                    System.out.println(paramVals[i]);
-                                }
-                                paramVals[paramVals.length - 1] = parseClazz.idVal.toString();
-                                return Operate.update(sql, paramVals);
-//                                return 1;
-                            }
-                            case "insert": {
-                                ParseClazz parseClazz = parseObjectArgs(args);
-                                String[] paramNames = new String[parseClazz.params.keySet().size()];
-                                for (int i = 0; i < parseClazz.params.keySet().toArray().length; i++) {
-                                    paramNames[i] = parseClazz.params.keySet().toArray()[i].toString();
-                                }
-
-                                sql = SqlBuilder.build()
-                                        .tbName(tbName)
-                                        .insert(paramNames)
-                                        .sql();
-                                System.out.println("执行insert方法");
-                                System.out.println("当前执行的sql语句: " + sql);
-
-                                String[] paramVals = new String[parseClazz.params.values().size()];
-                                for (int i = 0; i < parseClazz.params.values().toArray().length; i++) {
-                                    paramVals[i] = parseClazz.params.values().toArray()[i].toString();
-//                                    System.out.println(paramVals[i]);
-                                }
-                                return update(sql, paramVals);
-                            }
-                            case "delete": {
-                                sql = SqlBuilder.build()
-                                        .tbName(tbName)
-                                        .delete()
-                                        .where("id", SqlCompareIdentity.EQ)
-                                        .sql();
-                                System.out.println("执行delete方法");
-                                System.out.println("当前执行的sql语句: " + sql);
-                                return update(sql, args[0]);
-                            }
+                        String[] paramNames = new String[parseClazz.params.keySet().size()];
+                        for (int i = 0; i < parseClazz.params.keySet().toArray().length; i++) {
+                            paramNames[i] = parseClazz.params.keySet().toArray()[i].toString();
                         }
-                        // 如果都不是上面的,就是用户自己定义的
-                        if (method.isAnnotationPresent(Select.class)) {
-                            Select selectAnno = method.getAnnotation(Select.class);
-                            sql = selectAnno.value();
-                            // 判断是查询单个还是多个(返回值类型是List之类的吗)
-                            // 这里只是简单判断一下
+                        sql = SqlBuilder.build().update(tbName, paramNames).where(parseClazz.idName, SqlCompareIdentity.EQ).sql();
+
+                        System.out.println("执行update方法");
+                        System.out.println("当前执行的sql语句: " + sql);
+
+                        String[] paramVals = new String[parseClazz.params.values().size() + 1];
+                        for (int i = 0; i < parseClazz.params.values().toArray().length; i++) {
+                            paramVals[i] = parseClazz.params.values().toArray()[i].toString();
+//                                    System.out.println(paramVals[i]);
+                        }
+                        paramVals[paramVals.length - 1] = parseClazz.idVal.toString();
+                        return Operate.update(sql, paramVals);
+//                                return 1;
+                    }
+                    case "insert": {
+                        ParseClazz parseClazz = parseObjectArgs(args);
+                        String[] paramNames = new String[parseClazz.params.keySet().size()];
+                        for (int i = 0; i < parseClazz.params.keySet().toArray().length; i++) {
+                            paramNames[i] = parseClazz.params.keySet().toArray()[i].toString();
+                        }
+
+                        sql = SqlBuilder.build().tbName(tbName).insert(paramNames).sql();
+                        System.out.println("执行insert方法");
+                        System.out.println("当前执行的sql语句: " + sql);
+
+                        String[] paramVals = new String[parseClazz.params.values().size()];
+                        for (int i = 0; i < parseClazz.params.values().toArray().length; i++) {
+                            paramVals[i] = parseClazz.params.values().toArray()[i].toString();
+//                                    System.out.println(paramVals[i]);
+                        }
+                        return update(sql, paramVals);
+                    }
+                    case "delete": {
+                        sql = SqlBuilder.build().tbName(tbName).delete().where("id", SqlCompareIdentity.EQ).sql();
+                        System.out.println("执行delete方法");
+                        System.out.println("当前执行的sql语句: " + sql);
+                        return update(sql, args[0]);
+                    }
+                }
+                // 如果都不是上面的,就是用户自己定义的
+                if (method.isAnnotationPresent(Select.class)) {
+                    Select selectAnno = method.getAnnotation(Select.class);
+                    sql = selectAnno.value();
+                    // 判断是查询单个还是多个(返回值类型是List之类的吗)
+                    // 这里只是简单判断一下
 //                            Type genericReturnType = method.getGenericReturnType();
-                            // 判断是否进行了泛型类型参数化(是否有泛型)
-                            if (genericReturnType instanceof ParameterizedType) {
+                    // 判断是否进行了泛型类型参数化(是否有泛型)
+                    if (genericReturnType instanceof ParameterizedType) {
 //                            if (x instanceof Collection< ? >){
 //                            }
 //                            if (x instanceof Map<?,?>){
 //                            }
-                                return Operate.getList(type, sql, args);
-                            }
-                            return Operate.get(type, sql, args);
-                        }
-                        if (method.isAnnotationPresent(Update.class)) {
-                            Update anno = method.getAnnotation(Update.class);
-                            sql = anno.value();
-                            return update(sql, args);
-                        }
-                        if (method.isAnnotationPresent(Delete.class)) {
-                            Delete anno = method.getAnnotation(Delete.class);
-                            sql = anno.value();
-                            return update(sql, args);
-                        }
-                        if (method.isAnnotationPresent(Insert.class)) {
-                            Insert anno = method.getAnnotation(Insert.class);
-                            sql = anno.value();
-                            return update(sql, args);
-                        }
-                        // 返回值
-                        return null;
+                        return Operate.getList(type, sql, args);
                     }
-                });
+                    return Operate.get(type, sql, args);
+                }
+                if (method.isAnnotationPresent(Update.class)) {
+                    Update anno = method.getAnnotation(Update.class);
+                    sql = anno.value();
+                    return update(sql, args);
+                }
+                if (method.isAnnotationPresent(Delete.class)) {
+                    Delete anno = method.getAnnotation(Delete.class);
+                    sql = anno.value();
+                    return update(sql, args);
+                }
+                if (method.isAnnotationPresent(Insert.class)) {
+                    Insert anno = method.getAnnotation(Insert.class);
+                    sql = anno.value();
+                    return update(sql, args);
+                }
+                // 返回值
+                return null;
+            }
+        });
         return (T) proxyInstance;
     }
 
@@ -340,138 +320,131 @@ public class Operate {
      * 代理类的方法的实现
      *
      * @param mapperClass 被代理的接口
-     * @param type        封装返回的类型(与数据库表对应的实体类)
+     * @param type1       BaseRepository<T>封装返回的类型(与数据库表对应的实体类)
      * @param <T>
      * @return
      */
-    public static <T> T getMapper(Class<?> mapperClass, Class<?> type) {
+    public static <T> T getMapper(Class<?> mapperClass, Class<?> type1) {
         // 使用JDK动态代理为Dao接口生成代理对象,并返回
-        Object proxyInstance = Proxy.newProxyInstance(
-                Operate.class.getClassLoader(),
-                new Class[]{mapperClass},
-                new InvocationHandler() {
-                    @Override
-                    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-                        // 拿到表名
-                        Repository annotation = mapperClass.getAnnotation(Repository.class);
-                        String tbName = annotation.value();
-                        // 拼装sql
+        Object proxyInstance = Proxy.newProxyInstance(Operate.class.getClassLoader(), new Class[]{mapperClass}, new InvocationHandler() {
+            @Override
+            public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+                //获取方法的返回值类型
+                Type genericReturnType = method.getGenericReturnType();
+                // 用户定义的方法的返回类型
+                Class<?> type = null;
+                if (genericReturnType instanceof ParameterizedType) {
+                    Type[] actualTypeArguments = ((ParameterizedType) genericReturnType).getActualTypeArguments();
+                    for (Type parameterType : actualTypeArguments) {
+                        System.out.println(parameterType);
+                        type = (Class<?>) parameterType;
+                    }
+                } else {
+                    type = (Class<?>) genericReturnType;
+                }
+                // 拿到表名
+                Repository annotation = mapperClass.getAnnotation(Repository.class);
+                String tbName = annotation.value();
+                // 拼装sql
 //                        String sql = (String) Common.DefaultCRUDSql.get(method.getName());
 //                        System.out.println(sql);
-                        String sql = "";
-                        // 默认CRUD接口的代理方法
-                        switch (method.getName()) {
-                            case "findAll": {
-                                sql = SqlBuilder.build()
-                                        .tbName(tbName)
-                                        .select()
-                                        .sql();
-                                System.out.println("执行findAll方法");
-                                System.out.println("当前执行的sql语句: " + sql);
-                                return Operate.getList(type, sql);
-                            }
-                            case "findById": {
-                                sql = SqlBuilder.build()
-                                        .tbName(tbName)
-                                        .select()
-                                        .where("id", SqlCompareIdentity.EQ)
-                                        .sql();
-                                System.out.println("执行findById方法");
-                                System.out.println("当前执行的sql语句: " + sql);
-                                return Operate.get(type, sql, args);
-                            }
-                            case "update": {
-                                ParseClazz parseClazz = parseObjectArgs(args);
+                String sql = "";
+                // 默认CRUD接口的代理方法
+                switch (method.getName()) {
+                    case "findAll": {
+                        sql = SqlBuilder.build().tbName(tbName).select().sql();
+                        System.out.println("执行findAll方法");
+                        System.out.println("当前执行的sql语句: " + sql);
+                        return Operate.getList(type1, sql);
+                    }
+                    case "findById": {
+                        sql = SqlBuilder.build().tbName(tbName).select().where("id", SqlCompareIdentity.EQ).sql();
+                        System.out.println("执行findById方法");
+                        System.out.println("当前执行的sql语句: " + sql);
+                        return Operate.get(type1, sql, args);
+                    }
+                    case "update": {
+                        ParseClazz parseClazz = parseObjectArgs(args);
 
-                                String[] paramNames = new String[parseClazz.params.keySet().size()];
-                                for (int i = 0; i < parseClazz.params.keySet().toArray().length; i++) {
-                                    paramNames[i] = parseClazz.params.keySet().toArray()[i].toString();
-                                }
-                                sql = SqlBuilder.build()
-                                        .update(tbName, paramNames)
-                                        .where(parseClazz.idName, SqlCompareIdentity.EQ)
-                                        .sql();
-
-                                System.out.println("执行update方法");
-                                System.out.println("当前执行的sql语句: " + sql);
-
-                                String[] paramVals = new String[parseClazz.params.values().size() + 1];
-                                for (int i = 0; i < parseClazz.params.values().toArray().length; i++) {
-                                    paramVals[i] = parseClazz.params.values().toArray()[i].toString();
-//                                    System.out.println(paramVals[i]);
-                                }
-                                paramVals[paramVals.length - 1] = parseClazz.idVal.toString();
-                                return Operate.update(sql, paramVals);
-//                                return 1;
-                            }
-                            case "insert": {
-                                ParseClazz parseClazz = parseObjectArgs(args);
-                                String[] paramNames = new String[parseClazz.params.keySet().size()];
-                                for (int i = 0; i < parseClazz.params.keySet().toArray().length; i++) {
-                                    paramNames[i] = parseClazz.params.keySet().toArray()[i].toString();
-                                }
-
-                                sql = SqlBuilder.build()
-                                        .tbName(tbName)
-                                        .insert(paramNames)
-                                        .sql();
-                                System.out.println("执行insert方法");
-                                System.out.println("当前执行的sql语句: " + sql);
-
-                                String[] paramVals = new String[parseClazz.params.values().size()];
-                                for (int i = 0; i < parseClazz.params.values().toArray().length; i++) {
-                                    paramVals[i] = parseClazz.params.values().toArray()[i].toString();
-//                                    System.out.println(paramVals[i]);
-                                }
-                                return update(sql, paramVals);
-                            }
-                            case "delete": {
-                                sql = SqlBuilder.build()
-                                        .tbName(tbName)
-                                        .delete()
-                                        .where("id", SqlCompareIdentity.EQ)
-                                        .sql();
-                                System.out.println("执行delete方法");
-                                System.out.println("当前执行的sql语句: " + sql);
-                                return update(sql, args[0]);
-                            }
+                        String[] paramNames = new String[parseClazz.params.keySet().size()];
+                        for (int i = 0; i < parseClazz.params.keySet().toArray().length; i++) {
+                            paramNames[i] = parseClazz.params.keySet().toArray()[i].toString();
                         }
-                        // 如果都不是上面的,就是用户自己定义的
-                        if (method.isAnnotationPresent(Select.class)) {
-                            Select selectAnno = method.getAnnotation(Select.class);
-                            sql = selectAnno.value();
-                            // 判断是查询单个还是多个(返回值类型是List之类的吗)
-                            // 这里只是简单判断一下
-                            Type genericReturnType = method.getGenericReturnType();
-                            // 判断是否进行了泛型类型参数化(是否有泛型)
-                            if (genericReturnType instanceof ParameterizedType) {
+                        sql = SqlBuilder.build().update(tbName, paramNames).where(parseClazz.idName, SqlCompareIdentity.EQ).sql();
+
+                        System.out.println("执行update方法");
+                        System.out.println("当前执行的sql语句: " + sql);
+
+                        String[] paramVals = new String[parseClazz.params.values().size() + 1];
+                        for (int i = 0; i < parseClazz.params.values().toArray().length; i++) {
+                            paramVals[i] = parseClazz.params.values().toArray()[i].toString();
+//                                    System.out.println(paramVals[i]);
+                        }
+                        paramVals[paramVals.length - 1] = parseClazz.idVal.toString();
+                        return Operate.update(sql, paramVals);
+//                                return 1;
+                    }
+                    case "insert": {
+                        ParseClazz parseClazz = parseObjectArgs(args);
+                        String[] paramNames = new String[parseClazz.params.keySet().size()];
+                        for (int i = 0; i < parseClazz.params.keySet().toArray().length; i++) {
+                            paramNames[i] = parseClazz.params.keySet().toArray()[i].toString();
+                        }
+
+                        sql = SqlBuilder.build().tbName(tbName).insert(paramNames).sql();
+                        System.out.println("执行insert方法");
+                        System.out.println("当前执行的sql语句: " + sql);
+
+                        String[] paramVals = new String[parseClazz.params.values().size()];
+                        for (int i = 0; i < parseClazz.params.values().toArray().length; i++) {
+                            paramVals[i] = parseClazz.params.values().toArray()[i].toString();
+//                                    System.out.println(paramVals[i]);
+                        }
+                        return update(sql, paramVals);
+                    }
+                    case "delete": {
+                        sql = SqlBuilder.build().tbName(tbName).delete().where("id", SqlCompareIdentity.EQ).sql();
+                        System.out.println("执行delete方法");
+                        System.out.println("当前执行的sql语句: " + sql);
+                        return update(sql, args[0]);
+                    }
+                }
+                // 如果都不是上面的,就是用户自己定义的
+                if (method.isAnnotationPresent(Select.class)) {
+                    Select selectAnno = method.getAnnotation(Select.class);
+                    sql = selectAnno.value();
+                    // 判断是查询单个还是多个(返回值类型是List之类的吗)
+                    // 这里只是简单判断一下
+//                            Type genericReturnType = method.getGenericReturnType();
+                    // 判断是否进行了泛型类型参数化(是否有泛型)
+                    if (genericReturnType instanceof ParameterizedType) {
 //                            if (x instanceof Collection< ? >){
 //                            }
 //                            if (x instanceof Map<?,?>){
 //                            }
-                                return Operate.getList(type, sql, args);
-                            }
-                            return Operate.get(type, sql, args);
-                        }
-                        if (method.isAnnotationPresent(Update.class)) {
-                            Update anno = method.getAnnotation(Update.class);
-                            sql = anno.value();
-                            return update(sql, args);
-                        }
-                        if (method.isAnnotationPresent(Delete.class)) {
-                            Delete anno = method.getAnnotation(Delete.class);
-                            sql = anno.value();
-                            return update(sql, args);
-                        }
-                        if (method.isAnnotationPresent(Insert.class)) {
-                            Insert anno = method.getAnnotation(Insert.class);
-                            sql = anno.value();
-                            return update(sql, args);
-                        }
-                        // 返回值
-                        return null;
+                        return Operate.getList(type, sql, args);
                     }
-                });
+                    return Operate.get(type, sql, args);
+                }
+                if (method.isAnnotationPresent(Update.class)) {
+                    Update anno = method.getAnnotation(Update.class);
+                    sql = anno.value();
+                    return update(sql, args);
+                }
+                if (method.isAnnotationPresent(Delete.class)) {
+                    Delete anno = method.getAnnotation(Delete.class);
+                    sql = anno.value();
+                    return update(sql, args);
+                }
+                if (method.isAnnotationPresent(Insert.class)) {
+                    Insert anno = method.getAnnotation(Insert.class);
+                    sql = anno.value();
+                    return update(sql, args);
+                }
+                // 返回值
+                return null;
+            }
+        });
         return (T) proxyInstance;
     }
 
