@@ -7,6 +7,9 @@ public class Common {
     public static final String[] Compares = new String[]{
             ">", ">=", "<", "<=", "=", "!=", "like", "in"
     };
+    public static final String[] JOIN_TYPE = new String[]{
+            "left","right","full","inner","left outer","right outer"
+    };
 //    public static final Map DefaultCRUDSql = new HashMap<String, String>() {{
 //        put("findAll", "select * from #tbName");
 //        put("findById", "select * from #tbName where id=?");

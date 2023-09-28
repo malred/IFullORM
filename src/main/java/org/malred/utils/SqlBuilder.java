@@ -3,6 +3,7 @@ package org.malred.utils;
 public class SqlBuilder {
     String sql;
     String tbName;// 表名
+    String joinTb;// 连接的表的名称
 
     private SqlBuilder() {
     }
@@ -23,6 +24,19 @@ public class SqlBuilder {
 
     public SqlBuilder tbName(String tbName) {
         this.tbName = tbName;
+        return this;
+    }
+
+    public SqlBuilder join(SqlJoinType type, String joinTb) {
+        this.joinTb = joinTb;
+        sql += " " + Common.JOIN_TYPE[type.ordinal()] + " join " + joinTb;
+        return this;
+    }
+
+    public SqlBuilder on(String in_column, SqlCompareIdentity identity, String out_column) {
+        sql += " on " + joinTb + "." + in_column +
+                Common.Compares[identity.ordinal()]
+                + tbName + "." + out_column;
         return this;
     }
 

@@ -9,6 +9,8 @@ public class TbProduct {
   private String productName;
   private java.util.Date productTime;
 
+  public TbProduct() {
+  }
 
   public int getId() {
     return id;

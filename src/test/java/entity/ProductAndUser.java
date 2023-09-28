@@ -13,6 +13,9 @@ public class ProductAndUser {
     private String gender;
     private String addr;
 
+    public ProductAndUser() {
+    }
+
     @Override
     public String toString() {
         return "ProductAndUser{" +
