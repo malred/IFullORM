@@ -27,19 +27,6 @@ public class SqlBuilder {
         return this;
     }
 
-    public SqlBuilder join(SqlJoinType type, String joinTb) {
-        this.joinTb = joinTb;
-        sql += " " + Common.JOIN_TYPE[type.ordinal()] + " join " + joinTb;
-        return this;
-    }
-
-    public SqlBuilder on(String in_column, SqlCompareIdentity identity, String out_column) {
-        sql += " on " + joinTb + "." + in_column +
-                Common.Compares[identity.ordinal()]
-                + tbName + "." + out_column;
-        return this;
-    }
-
     public SqlBuilder select(String tbName, String... columns) {
         this.sql = "select ";
         for (int i = 0; i < columns.length; i++) {
@@ -66,6 +53,30 @@ public class SqlBuilder {
         return this;
     }
 
+    public SqlBuilder select(String tbName) {
+        this.sql = "select * from " + tbName;
+        return this;
+    }
+
+    public SqlBuilder select() {
+        this.sql = "select * from " + tbName;
+        return this;
+    }
+
+    public SqlBuilder join(SqlJoinType type, String joinTb) {
+        this.joinTb = joinTb;
+        sql += " " + Common.JOIN_TYPE[type.ordinal()] + " join " + joinTb;
+        return this;
+    }
+
+    public SqlBuilder on(String in_column, SqlCompareIdentity identity, String out_column) {
+        sql += " on " + joinTb + "." + in_column +
+                Common.Compares[identity.ordinal()]
+                + tbName + "." + out_column;
+        return this;
+    }
+
+
     public SqlBuilder count(String tbName) {
         this.sql = "select count(*) from " + tbName;
         return this;
@@ -76,13 +87,12 @@ public class SqlBuilder {
         return this;
     }
 
-    public SqlBuilder select(String tbName) {
-        this.sql = "select * from " + tbName;
-        return this;
-    }
-
-    public SqlBuilder select() {
-        this.sql = "select * from " + tbName;
+    public SqlBuilder where(String column, SqlCompareIdentity join) {
+        if (!sql.contains("where")) {
+            this.sql += " where " + column + Common.Compares[join.ordinal()] + " ? ";
+            return this;
+        }
+        this.sql += " and " + column + Common.Compares[join.ordinal()] + "? ";
         return this;
     }
 
@@ -110,12 +120,15 @@ public class SqlBuilder {
         return this;
     }
 
-    public SqlBuilder where(String column, SqlCompareIdentity join) {
-        if (!sql.contains("where")) {
-            this.sql += " where " + column + Common.Compares[join.ordinal()] + " ? ";
-            return this;
-        }
-        this.sql += " and " + column + Common.Compares[join.ordinal()] + "? ";
+    // 用于设置update
+    public SqlBuilder set(String column) {
+        this.sql += " " + column + "=?";
+        return this;
+    }
+
+    // 用于设置update
+    public SqlBuilder comma() {
+        this.sql += ", ";
         return this;
     }
 

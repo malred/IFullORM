@@ -38,4 +38,10 @@ public interface UserRepository extends BaseCRUDRepository<TbUser> {
 
     @Insert("insert into tb_user(username,password) values (?,?),(?,?)")
     public int addUser(String uname1, String pass1, String uname2, String pass2);
+
+    public List<TbUser> find_by_username_gen(String username);
+
+    public int update_by_username_gen(String password, String gender, String addr, String username);
+
+    public int delete_by_username_gen(String username);
 }

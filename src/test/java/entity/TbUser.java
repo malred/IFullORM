@@ -1,6 +1,9 @@
 package entity;
 
 
+import org.malred.annotations.Entity;
+
+@Entity("tb_user")
 public class TbUser {
 
     // can't cast Integer to Long

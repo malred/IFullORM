@@ -3,8 +3,10 @@ import org.junit.Before;
 import org.junit.Test;
 import dao.UserRepository;
 import entity.TbUser;
+import org.malred.annotations.ScanEntity;
 import org.malred.utils.*;
 
+import java.io.IOException;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -12,6 +14,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
+@ScanEntity("entity")
 public class t {
     @Before
     public void before() {
@@ -253,6 +256,51 @@ public class t {
 //        UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
         UserRepository mapper = Operate.getMapper(UserRepository.class);
         int cnt = mapper.addUser("tttt", "tpass", "tttt2", "tpass2");
+        System.out.println("影响了" + cnt + "条数据");
+    }
+
+    @Test
+    public void testLoadEntity() {
+        try {
+            Operate.scan(t.class);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // 测试根据实体类字段自动生成的方法
+    @Test
+    public void testEntityParamGenFn() throws IOException, ClassNotFoundException {
+        // 扫描实体类
+        Operate.scan(t.class);
+        UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
+
+        List<TbUser> users = mapper.find_by_username_gen("张三");
+        System.out.println(users);
+
+        int cnt = 0;
+        cnt = mapper.update_by_username_gen("1314", "女", "zh_cn", "eman");
+        System.out.println("影响了" + cnt + "条数据");
+
+        cnt = mapper.delete_by_username_gen("yyy");
+        System.out.println("影响了" + cnt + "条数据");
+    }
+    @Test
+    public void testEntityParamGenFn_1() throws IOException, ClassNotFoundException {
+        // 扫描实体类
+        Operate.scan(t.class);
+        UserRepository mapper = Operate.getMapper(UserRepository.class);
+
+        List<TbUser> users = mapper.find_by_username_gen("张三");
+        System.out.println(users);
+
+        int cnt = 0;
+        cnt = mapper.update_by_username_gen("1314", "女", "zh_cn", "eman");
+        System.out.println("影响了" + cnt + "条数据");
+
+        cnt = mapper.delete_by_username_gen("yyy");
         System.out.println("影响了" + cnt + "条数据");
     }
 }

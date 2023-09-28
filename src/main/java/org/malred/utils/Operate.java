@@ -2,11 +2,34 @@ package org.malred.utils;
 
 import org.malred.annotations.*;
 
+import java.io.IOException;
 import java.lang.reflect.*;
 import java.sql.*;
 import java.util.*;
 
 public class Operate {
+    // 表名-实体类
+    static HashMap<String, Class<?>> entitys = new HashMap<>();
+
+    public static void scan(Class<?> clazz) throws IOException, ClassNotFoundException {
+        if (clazz.isAnnotationPresent(ScanEntity.class)) {
+            ScanEntity annotation = clazz.getAnnotation(ScanEntity.class);
+            for (int i = 0; i < annotation.value().length; i++) {
+                // 根据路径获取class
+                List<Class<?>> classes = LoadUtils.loadClass(annotation.value()[i]);
+                // 存入map
+                for (Class<?> aClass : classes) {
+//                    String simpleName = aClass.getSimpleName();
+                    if (aClass.isAnnotationPresent(Entity.class)) {
+                        Entity entityAnno = aClass.getAnnotation(Entity.class);
+                        entitys.put(entityAnno.value(), aClass);
+                    }
+                }
+            }
+        }
+//        System.out.println(entitys);
+    }
+
     //通用的更新数据库的方法：insert,update,delete 语句时
     public static int update(String sql) throws SQLException {
         //1、获取连接
@@ -217,6 +240,7 @@ public class Operate {
 //                        String sql = (String) Common.DefaultCRUDSql.get(method.getName());
 //                        System.out.println(sql);
                 String sql = "";
+
                 // 默认CRUD接口的代理方法
                 switch (method.getName()) {
                     case "findAll": {
@@ -277,10 +301,13 @@ public class Operate {
                         return update(sql, args[0]);
                     }
                 }
+
                 // 如果都不是上面的,就是用户自己定义的
                 if (method.isAnnotationPresent(Select.class)) {
+                    System.out.println("执行用户注解定义的方法: " + method.getName());
                     Select selectAnno = method.getAnnotation(Select.class);
                     sql = selectAnno.value();
+                    System.out.println("当前sql: " + sql);
                     // 判断是查询单个还是多个(返回值类型是List之类的吗)
                     // 这里只是简单判断一下
 //                            Type genericReturnType = method.getGenericReturnType();
@@ -295,19 +322,119 @@ public class Operate {
                     return Operate.get(type, sql, args);
                 }
                 if (method.isAnnotationPresent(Update.class)) {
+                    System.out.println("执行用户注解定义的方法: " + method.getName());
                     Update anno = method.getAnnotation(Update.class);
                     sql = anno.value();
+                    System.out.println("当前sql: " + sql);
                     return update(sql, args);
                 }
                 if (method.isAnnotationPresent(Delete.class)) {
+                    System.out.println("执行用户注解定义的方法: " + method.getName());
                     Delete anno = method.getAnnotation(Delete.class);
                     sql = anno.value();
+                    System.out.println("当前sql: " + sql);
                     return update(sql, args);
                 }
                 if (method.isAnnotationPresent(Insert.class)) {
+                    System.out.println("执行用户注解定义的方法: " + method.getName());
                     Insert anno = method.getAnnotation(Insert.class);
                     sql = anno.value();
+                    System.out.println("当前sql: " + sql);
                     return update(sql, args);
+                }
+
+                // 如果不是上面的, 就走我们根据entity创建的方法
+                Class<?> aClass = entitys.get(tbName);
+                /*
+                    id
+                    username
+                    password
+                    gender
+                    addr
+                    ---------
+                    find_by_id_gen
+                    find_by_username_gen
+                    find_by_password_gen
+                    find_by_gender_gen
+                    find_by_addr_gen
+
+                    update_by_id_gen
+                    update_by_username_gen
+                    update_by_password_gen
+                    update_by_gender_gen
+                    update_by_addr_gen
+
+                    delete_by_id_gen
+                    delete_by_username_gen
+                    delete_by_password_gen
+                    delete_by_gender_gen
+                    delete_by_addr_gen
+                 */
+                Map<String, String> methodList = new HashMap<>();
+
+                Field[] declaredFields = aClass.getDeclaredFields();
+                String[] params = new String[declaredFields.length];
+                for (int i = 0; i < declaredFields.length; i++) {
+                    declaredFields[i].setAccessible(true);
+                    String name = declaredFields[i].getName();
+                    String methodNameFind = "find_by_" + name + "_gen";
+                    String methodNameUpt = "update_by_" + name + "_gen";
+                    String methodNameDel = "delete_by_" + name + "_gen";
+                    methodList.put(methodNameFind, name);
+                    methodList.put(methodNameUpt, name);
+                    methodList.put(methodNameDel, name);
+                    // 用于update设置set字段
+                    params[i] = declaredFields[i].getName();
+                }
+//                System.out.println(methodList);
+
+                System.out.println("执行根据实体类字段自动生成的方法: " + method.getName());
+                if (methodList.containsKey(method.getName())) {
+//                    System.out.println(methodList.get(method.getName()));
+                    if (method.getName().contains("find")) {
+                        sql = SqlBuilder.build()
+                                .tbName(tbName)
+                                .select()
+                                .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
+                                .sql();
+                        System.out.println("当前sql: " + sql);
+                        return getList(aClass, sql, args);
+                    }
+                    if (method.getName().contains("update")) {
+                        SqlBuilder builder = SqlBuilder.build()
+                                .base("update tb_user set");
+                        // update set xxx=?
+                        List<String> setParams = new ArrayList<>();
+                        for (int i = 0; i < params.length; i++) {
+                            // 不等于作为条件的字段
+                            if (!params[i].contains("id") &&
+                                    !methodList.get(method.getName()).equals(params[i])) {
+                                setParams.add(params[i]);
+                            }
+                        }
+                        for (int i = 0; i < setParams.size(); i++) {
+                            if (i == setParams.size() - 1) {
+                                builder.set(setParams.get(i));
+                                break;
+                            }
+                            builder.set(setParams.get(i))
+                                    .comma();
+                        }
+                        sql = builder
+                                .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
+                                .sql();
+                        System.out.println("当前sql: " + sql);
+                        return update(sql, args);
+                    }
+                    if (method.getName().contains("delete")) {
+                        sql = SqlBuilder.build()
+                                .tbName(tbName)
+                                .delete()
+                                .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
+                                .sql();
+                        System.out.println("当前sql: " + sql);
+                        return update(sql, args);
+                    }
                 }
                 // 返回值
                 return null;
@@ -344,13 +471,16 @@ public class Operate {
                         type = (Class<?>) genericReturnType;
                     }
                 }
+
                 // 拿到表名
                 Repository annotation = mapperClass.getAnnotation(Repository.class);
                 String tbName = annotation.value();
                 // 拼装sql
 //                        String sql = (String) Common.DefaultCRUDSql.get(method.getName());
 //                        System.out.println(sql);
+
                 String sql = "";
+
                 // 默认CRUD接口的代理方法
                 switch (method.getName()) {
                     case "findAll": {
@@ -410,10 +540,13 @@ public class Operate {
                         return update(sql, args[0]);
                     }
                 }
+
                 // 如果都不是上面的,就是用户自己定义的
                 if (method.isAnnotationPresent(Select.class)) {
+                    System.out.println("执行用户注解定义的方法: " + method.getName());
                     Select selectAnno = method.getAnnotation(Select.class);
                     sql = selectAnno.value();
+                    System.out.println("当前sql: " + sql);
                     // 判断是查询单个还是多个(返回值类型是List之类的吗)
                     // 这里只是简单判断一下
 //                            Type genericReturnType = method.getGenericReturnType();
@@ -428,20 +561,121 @@ public class Operate {
                     return Operate.get(type, sql, args);
                 }
                 if (method.isAnnotationPresent(Update.class)) {
+                    System.out.println("执行用户注解定义的方法: " + method.getName());
                     Update anno = method.getAnnotation(Update.class);
                     sql = anno.value();
+                    System.out.println("当前sql: " + sql);
                     return update(sql, args);
                 }
                 if (method.isAnnotationPresent(Delete.class)) {
+                    System.out.println("执行用户注解定义的方法: " + method.getName());
                     Delete anno = method.getAnnotation(Delete.class);
                     sql = anno.value();
+                    System.out.println("当前sql: " + sql);
                     return update(sql, args);
                 }
                 if (method.isAnnotationPresent(Insert.class)) {
+                    System.out.println("执行用户注解定义的方法: " + method.getName());
                     Insert anno = method.getAnnotation(Insert.class);
                     sql = anno.value();
+                    System.out.println("当前sql: " + sql);
                     return update(sql, args);
                 }
+
+                // 如果不是上面的, 就走我们根据entity创建的方法
+                Class<?> aClass = entitys.get(tbName);
+                /*
+                    id
+                    username
+                    password
+                    gender
+                    addr
+                    ---------
+                    find_by_id_gen
+                    find_by_username_gen
+                    find_by_password_gen
+                    find_by_gender_gen
+                    find_by_addr_gen
+
+                    update_by_id_gen
+                    update_by_username_gen
+                    update_by_password_gen
+                    update_by_gender_gen
+                    update_by_addr_gen
+
+                    delete_by_id_gen
+                    delete_by_username_gen
+                    delete_by_password_gen
+                    delete_by_gender_gen
+                    delete_by_addr_gen
+                 */
+                Map<String, String> methodList = new HashMap<>();
+
+                Field[] declaredFields = aClass.getDeclaredFields();
+                String[] params = new String[declaredFields.length];
+                for (int i = 0; i < declaredFields.length; i++) {
+                    declaredFields[i].setAccessible(true);
+                    String name = declaredFields[i].getName();
+                    String methodNameFind = "find_by_" + name + "_gen";
+                    String methodNameUpt = "update_by_" + name + "_gen";
+                    String methodNameDel = "delete_by_" + name + "_gen";
+                    methodList.put(methodNameFind, name);
+                    methodList.put(methodNameUpt, name);
+                    methodList.put(methodNameDel, name);
+                    // 用于update设置set字段
+                    params[i] = declaredFields[i].getName();
+                }
+//                System.out.println(methodList);
+
+                System.out.println("执行根据实体类字段自动生成的方法: " + method.getName());
+                if (methodList.containsKey(method.getName())) {
+//                    System.out.println(methodList.get(method.getName()));
+                    if (method.getName().contains("find")) {
+                        sql = SqlBuilder.build()
+                                .tbName(tbName)
+                                .select()
+                                .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
+                                .sql();
+                        System.out.println("当前sql: " + sql);
+                        return getList(aClass, sql, args);
+                    }
+                    if (method.getName().contains("update")) {
+                        SqlBuilder builder = SqlBuilder.build()
+                                .base("update tb_user set");
+                        // update set xxx=?
+                        List<String> setParams = new ArrayList<>();
+                        for (int i = 0; i < params.length; i++) {
+                            // 不等于作为条件的字段
+                            if (!params[i].contains("id") &&
+                                    !methodList.get(method.getName()).equals(params[i])) {
+                                setParams.add(params[i]);
+                            }
+                        }
+                        for (int i = 0; i < setParams.size(); i++) {
+                            if (i == setParams.size() - 1) {
+                                builder.set(setParams.get(i));
+                                break;
+                            }
+                            builder.set(setParams.get(i))
+                                    .comma();
+                        }
+                        sql = builder
+                                .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
+                                .sql();
+                        System.out.println("当前sql: " + sql);
+                        return update(sql, args);
+                    }
+                    if (method.getName().contains("delete")) {
+                        sql = SqlBuilder.build()
+                                .tbName(tbName)
+                                .delete()
+                                .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
+                                .sql();
+                        System.out.println("当前sql: " + sql);
+                        return update(sql, args);
+                    }
+                }
+
                 // 返回值
                 return null;
             }

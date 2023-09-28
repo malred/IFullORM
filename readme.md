@@ -236,3 +236,64 @@ public class t {
     }
 }
 ```
+
+# 更新日志
+
+> 新增根据方法名提供代理方法, 方法名格式为find|update|delete_by_字段名_gen
+
+> 首先需要在类上添加@ScanEntity注解, 指定实体类所在路径
+
+```java
+
+@ScanEntity("entity")
+public class t {
+}
+```
+
+> 然后在实体类上加上注解@Entity, 指定表名, 动态代理时会通过表名在接口和实体类间建立连接
+
+```java
+
+@Entity("tb_user")
+public class TbUser {
+}
+```
+
+> 在接口中定义方法
+
+```java
+
+@Repository("tb_user")
+public interface UserRepository {
+    public List<TbUser> find_by_username_gen(String username);
+
+    public int update_by_username_gen(String password, String gender, String addr, String username);
+
+    public int delete_by_username_gen(String username);
+}
+``` 
+
+> 测试
+
+```java
+
+@ScanEntity("entity")
+public class t {
+    // 测试根据实体类字段自动生成的方法
+    @Test
+    public void testEntityParamGenFn() throws IOException, ClassNotFoundException {
+        Operate.scan(t.class);
+        UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
+
+        List<TbUser> users = mapper.find_by_username_gen("张三");
+        System.out.println(users);
+
+        int cnt = 0;
+        cnt = mapper.update_by_username_gen("1314", "女", "zh_cn", "eman");
+        System.out.println("影响了" + cnt + "条数据");
+
+        cnt = mapper.delete_by_username_gen("ttt");
+        System.out.println("影响了" + cnt + "条数据");
+    }
+}
+```
