@@ -1,15 +1,19 @@
-package org.malred.utils;
+package org.malred.cores.builder.mysql;
 
-public class SqlBuilder {
+import org.malred.utils.Common;
+import org.malred.utils.SqlCompareIdentity;
+import org.malred.utils.SqlJoinType;
+
+public class MysqlBuilder extends MysqlBuilderImpl {
     String sql;
     String tbName;// 表名
     String joinTb;// 连接的表的名称
 
-    private SqlBuilder() {
+    private MysqlBuilder() {
     }
 
-    public static SqlBuilder build() {
-        return new SqlBuilder();
+    public static MysqlBuilder build() {
+        return new MysqlBuilder();
     }
 
     public String sql() {
@@ -17,17 +21,17 @@ public class SqlBuilder {
     }
 
     // 自定义基础sql
-    public SqlBuilder base(String U_sql) {
+    public MysqlBuilder base(String U_sql) {
         this.sql = U_sql;
         return this;
     }
 
-    public SqlBuilder tbName(String tbName) {
+    public MysqlBuilder tbName(String tbName) {
         this.tbName = tbName;
         return this;
     }
 
-    public SqlBuilder select(String tbName, String... columns) {
+    public MysqlBuilder select(String tbName, String... columns) {
         this.sql = "select ";
         for (int i = 0; i < columns.length; i++) {
             if (i == columns.length - 1) {
@@ -40,7 +44,7 @@ public class SqlBuilder {
         return this;
     }
 
-    public SqlBuilder select(String[] columns) {
+    public MysqlBuilder select(String[] columns) {
         this.sql = "select ";
         for (int i = 0; i < columns.length; i++) {
             if (i == columns.length - 1) {
@@ -53,23 +57,23 @@ public class SqlBuilder {
         return this;
     }
 
-    public SqlBuilder select(String tbName) {
+    public MysqlBuilder select(String tbName) {
         this.sql = "select * from " + tbName;
         return this;
     }
 
-    public SqlBuilder select() {
+    public MysqlBuilder select() {
         this.sql = "select * from " + tbName;
         return this;
     }
 
-    public SqlBuilder join(SqlJoinType type, String joinTb) {
+    public MysqlBuilder join(SqlJoinType type, String joinTb) {
         this.joinTb = joinTb;
         sql += " " + Common.JOIN_TYPE[type.ordinal()] + " join " + joinTb;
         return this;
     }
 
-    public SqlBuilder on(String in_column, SqlCompareIdentity identity, String out_column) {
+    public MysqlBuilder on(String in_column, SqlCompareIdentity identity, String out_column) {
         sql += " on " + joinTb + "." + in_column +
                 Common.Compares[identity.ordinal()]
                 + tbName + "." + out_column;
@@ -77,17 +81,17 @@ public class SqlBuilder {
     }
 
 
-    public SqlBuilder count(String tbName) {
+    public MysqlBuilder count(String tbName) {
         this.sql = "select count(*) from " + tbName;
         return this;
     }
 
-    public SqlBuilder count() {
+    public MysqlBuilder count() {
         this.sql = "select count(*) from " + tbName;
         return this;
     }
 
-    public SqlBuilder where(String column, SqlCompareIdentity join) {
+    public MysqlBuilder where(String column, SqlCompareIdentity join) {
         if (!sql.contains("where")) {
             this.sql += " where " + column + Common.Compares[join.ordinal()] + " ? ";
             return this;
@@ -96,7 +100,7 @@ public class SqlBuilder {
         return this;
     }
 
-    public SqlBuilder update(String tbName, String... columns) {
+    public MysqlBuilder update(String tbName, String... columns) {
         this.sql = "update " + tbName + " set ";
         for (int i = 0; i < columns.length; i++) {
             if (i == columns.length - 1) {
@@ -108,7 +112,7 @@ public class SqlBuilder {
         return this;
     }
 
-    public SqlBuilder update(String[] columns) {
+    public MysqlBuilder update(String[] columns) {
         this.sql = "update " + tbName + " set ";
         for (int i = 0; i < columns.length; i++) {
             if (i == columns.length - 1) {
@@ -121,18 +125,18 @@ public class SqlBuilder {
     }
 
     // 用于设置update
-    public SqlBuilder set(String column) {
+    public MysqlBuilder set(String column) {
         this.sql += " " + column + "=?";
         return this;
     }
 
     // 用于设置update
-    public SqlBuilder comma() {
+    public MysqlBuilder comma() {
         this.sql += ", ";
         return this;
     }
 
-    public SqlBuilder insert(String tbName, String... params) {
+    public MysqlBuilder insert(String tbName, String... params) {
         sql = "insert into " + tbName;
         sql += "(";
         for (int i = 0; i < params.length; i++) {
@@ -153,7 +157,7 @@ public class SqlBuilder {
         return this;
     }
 
-    public SqlBuilder insert(String[] params) {
+    public MysqlBuilder insert(String[] params) {
         sql = "insert into " + tbName;
         sql += "(";
         for (int i = 0; i < params.length; i++) {
@@ -174,12 +178,12 @@ public class SqlBuilder {
         return this;
     }
 
-    public SqlBuilder delete(String tbName) {
+    public MysqlBuilder delete(String tbName) {
         sql = "delete from " + tbName;
         return this;
     }
 
-    public SqlBuilder delete() {
+    public MysqlBuilder delete() {
         sql = "delete from " + tbName;
         return this;
     }

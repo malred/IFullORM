@@ -1,12 +1,12 @@
-package org.malred.annotations;
+package org.malred.annotations.sql;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+@Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.TYPE)
-public @interface ScanEntity {
-    String[] value();// 被扫描的包名(实体类所在的包)
+public @interface Delete {
+    String value();
 }

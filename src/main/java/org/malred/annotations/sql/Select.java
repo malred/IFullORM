@@ -1,4 +1,4 @@
-package org.malred.annotations;
+package org.malred.annotations.sql;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -6,7 +6,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 @Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.TYPE)
-public @interface Entity {
-    String value();// 表名
+@Target(ElementType.METHOD)
+public @interface Select {
+    String value();
 }

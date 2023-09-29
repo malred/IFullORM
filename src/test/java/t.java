@@ -3,13 +3,12 @@ import org.junit.Before;
 import org.junit.Test;
 import dao.UserRepository;
 import entity.TbUser;
-import org.malred.annotations.ScanEntity;
+import org.malred.annotations.table.ScanEntity;
+import org.malred.cores.Operate;
+import org.malred.cores.builder.mysql.MysqlBuilder;
 import org.malred.utils.*;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,41 +26,41 @@ public class t {
     // sqlbuilder+jdbc封装
     @Test
     public void testSelectBuild() {
-        String sql = SqlBuilder.build()
+        String sql = MysqlBuilder.build()
                 .select("tb_user")
                 .where("id", SqlCompareIdentity.NE)
                 .sql();
         System.out.println(sql);
 
-        String sql_cols = SqlBuilder.build()
+        String sql_cols = MysqlBuilder.build()
                 .select("tb_user", "username", "gender", "addr")
                 .where("id", SqlCompareIdentity.NE)
                 .sql();
         System.out.println(sql_cols);
 
-        String sql_cols_option2 = SqlBuilder.build().select("tb_user", "username", "gender", "addr").where("id", SqlCompareIdentity.NE).where("password", SqlCompareIdentity.NE).sql();
+        String sql_cols_option2 = MysqlBuilder.build().select("tb_user", "username", "gender", "addr").where("id", SqlCompareIdentity.NE).where("password", SqlCompareIdentity.NE).sql();
         System.out.println(sql_cols_option2);
 
-        String sql_count = SqlBuilder.build().count("tb_user").where("id", SqlCompareIdentity.GT).sql();
+        String sql_count = MysqlBuilder.build().count("tb_user").where("id", SqlCompareIdentity.GT).sql();
         System.out.println(sql_count);
     }
 
     @Test
     public void testSelectBuildTbName() {
         // 直接设置build的tbName,然后使用不需要tbName的方法来构建
-        String sql1 = SqlBuilder.build().tbName("tb_user").select().where("id", SqlCompareIdentity.NE).sql();
+        String sql1 = MysqlBuilder.build().tbName("tb_user").select().where("id", SqlCompareIdentity.NE).sql();
         System.out.println(sql1);
 
-        String sql_cols1 = SqlBuilder.build().tbName("tb_user").select(new String[]{"username", "gender", "addr"}).where("id", SqlCompareIdentity.NE).sql();
+        String sql_cols1 = MysqlBuilder.build().tbName("tb_user").select(new String[]{"username", "gender", "addr"}).where("id", SqlCompareIdentity.NE).sql();
         System.out.println(sql_cols1);
 
-        String sql_cols_option21 = SqlBuilder.build().tbName("tb_user").select(new String[]{"username", "gender", "addr"}).where("id", SqlCompareIdentity.NE).where("password", SqlCompareIdentity.NE).sql();
+        String sql_cols_option21 = MysqlBuilder.build().tbName("tb_user").select(new String[]{"username", "gender", "addr"}).where("id", SqlCompareIdentity.NE).where("password", SqlCompareIdentity.NE).sql();
         System.out.println(sql_cols_option21);
 
-        String sql_count1 = SqlBuilder.build().tbName("tb_user").count().where("id", SqlCompareIdentity.GT).sql();
+        String sql_count1 = MysqlBuilder.build().tbName("tb_user").count().where("id", SqlCompareIdentity.GT).sql();
         System.out.println(sql_count1);
 
-        String sql_join = SqlBuilder.build().tbName("tb_user").select().join(SqlJoinType.INNER, "tb_product").on("id", SqlCompareIdentity.EQ, "id").where("tb_user.id", SqlCompareIdentity.EQ).sql();
+        String sql_join = MysqlBuilder.build().tbName("tb_user").select().join(SqlJoinType.INNER, "tb_product").on("id", SqlCompareIdentity.EQ, "id").where("tb_user.id", SqlCompareIdentity.EQ).sql();
         System.out.println(sql_join);
     }
 
@@ -69,46 +68,46 @@ public class t {
     public void testSelectMulti() throws Exception {
         ArrayList<TbUser> list;
 
-        String sql = SqlBuilder.build().select("tb_user").where("id", SqlCompareIdentity.NE).sql();
+        String sql = MysqlBuilder.build().select("tb_user").where("id", SqlCompareIdentity.NE).sql();
         list = Operate.getList(TbUser.class, sql, 1);
         System.out.println(list);
 
-        String sql_cols = SqlBuilder.build().select("tb_user", "username", "gender", "addr").where("id", SqlCompareIdentity.NE).sql();
+        String sql_cols = MysqlBuilder.build().select("tb_user", "username", "gender", "addr").where("id", SqlCompareIdentity.NE).sql();
         list = Operate.getList(TbUser.class, sql_cols, 1);
         System.out.println(list);
 
-        String sql_cols_option2 = SqlBuilder.build().select("tb_user", "username", "gender", "addr").where("id", SqlCompareIdentity.NE).where("gender", SqlCompareIdentity.NE).sql();
+        String sql_cols_option2 = MysqlBuilder.build().select("tb_user", "username", "gender", "addr").where("id", SqlCompareIdentity.NE).where("gender", SqlCompareIdentity.NE).sql();
         list = Operate.getList(TbUser.class, sql_cols_option2, 1, "男");
         System.out.println(list);
 
-        String sql_count = SqlBuilder.build().count("tb_user").where("id", SqlCompareIdentity.GT).sql();
+        String sql_count = MysqlBuilder.build().count("tb_user").where("id", SqlCompareIdentity.GT).sql();
         Long cnt = (Long) Operate.getValue(sql_count, 3);
         System.out.println(cnt);
     }
 
     @Test
     public void testUpdateBuild() {
-        String sql = SqlBuilder.build()
+        String sql = MysqlBuilder.build()
                 .update("tb_user", "password", "username")
                 .where("id", SqlCompareIdentity.EQ)
                 .sql();
         System.out.println(sql);
 
-        String sql_no_tbname = SqlBuilder.build().tbName("tb_user").update(new String[]{"password", "username"}).where("id", SqlCompareIdentity.EQ).sql();
+        String sql_no_tbname = MysqlBuilder.build().tbName("tb_user").update(new String[]{"password", "username"}).where("id", SqlCompareIdentity.EQ).sql();
         System.out.println(sql_no_tbname);
     }
 
     @Test
     public void testUpdate() throws SQLException {
         int cnt = 0;
-        String sql = SqlBuilder.build()
+        String sql = MysqlBuilder.build()
                 .update("tb_user", "password", "username")
                 .where("id", SqlCompareIdentity.EQ)
                 .sql();
         cnt = Operate.update(sql, "O", "t50", "13");
         System.out.println("影响了" + cnt + "条数据");
 
-        String sql_no_tbname = SqlBuilder.build()
+        String sql_no_tbname = MysqlBuilder.build()
                 .tbName("tb_user")
                 .update(new String[]{"password", "username"})
                 .where("id", SqlCompareIdentity.EQ)
@@ -119,7 +118,7 @@ public class t {
 
     @Test
     public void testInsertBuild() {
-        String sql = SqlBuilder.build()
+        String sql = MysqlBuilder.build()
                 .insert("tb_user", "username", "password", "addr", "gender")
                 .sql();
         System.out.println(sql);
@@ -127,7 +126,7 @@ public class t {
 
     @Test
     public void testInsertBuildTbName() {
-        String sql = SqlBuilder.build()
+        String sql = MysqlBuilder.build()
                 .tbName("tb_user")
                 .insert(new String[]{"username", "password", "addr", "gender"}).sql();
         System.out.println(sql);
@@ -136,7 +135,7 @@ public class t {
     @Test
     public void testInsert() throws SQLException {
         int count = 0;
-        String sql = SqlBuilder.build()
+        String sql = MysqlBuilder.build()
                 .insert("tb_user", "username", "password", "addr", "gender")
                 .sql();
         count = Operate.update(sql, "name", "pass", "cn", "男");
@@ -145,13 +144,13 @@ public class t {
 
     @Test
     public void testDeleteBuild() {
-        String sql_tb = SqlBuilder.build()
+        String sql_tb = MysqlBuilder.build()
                 .tbName("tb_user").delete()
                 .where("id", SqlCompareIdentity.EQ)
                 .sql();
         System.out.println(sql_tb);
 
-        String sql = SqlBuilder.build().delete("tb_user")
+        String sql = MysqlBuilder.build().delete("tb_user")
                 .where("id", SqlCompareIdentity.EQ).sql();
         System.out.println(sql);
     }
@@ -159,7 +158,7 @@ public class t {
     @Test
     public void testDelete() throws SQLException {
         int cnt = 0;
-        String sql_tb = SqlBuilder.build()
+        String sql_tb = MysqlBuilder.build()
                 .tbName("tb_user")
                 .delete()
                 .where("id", SqlCompareIdentity.EQ).sql();

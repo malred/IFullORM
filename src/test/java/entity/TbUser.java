@@ -1,7 +1,7 @@
 package entity;
 
 
-import org.malred.annotations.Entity;
+import org.malred.annotations.table.Entity;
 
 @Entity("tb_user")
 public class TbUser {

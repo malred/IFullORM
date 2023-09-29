@@ -1,8 +1,12 @@
 package dao;
 
 import entity.ProductAndUser;
-import org.malred.annotations.*;
 import entity.TbUser;
+import org.malred.annotations.sql.Delete;
+import org.malred.annotations.sql.Insert;
+import org.malred.annotations.sql.Select;
+import org.malred.annotations.sql.Update;
+import org.malred.annotations.table.Repository;
 import org.malred.repository.BaseCRUDRepository;
 
 import java.util.List;

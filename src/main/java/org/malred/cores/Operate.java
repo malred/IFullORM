@@ -1,6 +1,16 @@
-package org.malred.utils;
+package org.malred.cores;
 
-import org.malred.annotations.*;
+import org.malred.annotations.table.Entity;
+import org.malred.annotations.table.Repository;
+import org.malred.annotations.table.ScanEntity;
+import org.malred.annotations.sql.Delete;
+import org.malred.annotations.sql.Insert;
+import org.malred.annotations.sql.Select;
+import org.malred.annotations.sql.Update;
+import org.malred.utils.JDBCUtils;
+import org.malred.utils.LoadUtils;
+import org.malred.cores.builder.mysql.MysqlBuilder;
+import org.malred.utils.SqlCompareIdentity;
 
 import java.io.IOException;
 import java.lang.reflect.*;
@@ -244,13 +254,13 @@ public class Operate {
                 // 默认CRUD接口的代理方法
                 switch (method.getName()) {
                     case "findAll": {
-                        sql = SqlBuilder.build().tbName(tbName).select().sql();
+                        sql = MysqlBuilder.build().tbName(tbName).select().sql();
                         System.out.println("执行findAll方法");
                         System.out.println("当前执行的sql语句: " + sql);
                         return Operate.getList(type, sql);
                     }
                     case "findById": {
-                        sql = SqlBuilder.build().tbName(tbName).select().where("id", SqlCompareIdentity.EQ).sql();
+                        sql = MysqlBuilder.build().tbName(tbName).select().where("id", SqlCompareIdentity.EQ).sql();
                         System.out.println("执行findById方法");
                         System.out.println("当前执行的sql语句: " + sql);
                         return Operate.get(type, sql, args);
@@ -262,7 +272,7 @@ public class Operate {
                         for (int i = 0; i < parseClazz.params.keySet().toArray().length; i++) {
                             paramNames[i] = parseClazz.params.keySet().toArray()[i].toString();
                         }
-                        sql = SqlBuilder.build().update(tbName, paramNames).where(parseClazz.idName, SqlCompareIdentity.EQ).sql();
+                        sql = MysqlBuilder.build().update(tbName, paramNames).where(parseClazz.idName, SqlCompareIdentity.EQ).sql();
 
                         System.out.println("执行update方法");
                         System.out.println("当前执行的sql语句: " + sql);
@@ -283,7 +293,7 @@ public class Operate {
                             paramNames[i] = parseClazz.params.keySet().toArray()[i].toString();
                         }
 
-                        sql = SqlBuilder.build().tbName(tbName).insert(paramNames).sql();
+                        sql = MysqlBuilder.build().tbName(tbName).insert(paramNames).sql();
                         System.out.println("执行insert方法");
                         System.out.println("当前执行的sql语句: " + sql);
 
@@ -295,7 +305,7 @@ public class Operate {
                         return update(sql, paramVals);
                     }
                     case "delete": {
-                        sql = SqlBuilder.build().tbName(tbName).delete().where("id", SqlCompareIdentity.EQ).sql();
+                        sql = MysqlBuilder.build().tbName(tbName).delete().where("id", SqlCompareIdentity.EQ).sql();
                         System.out.println("执行delete方法");
                         System.out.println("当前执行的sql语句: " + sql);
                         return update(sql, args[0]);
@@ -392,7 +402,7 @@ public class Operate {
                 if (methodList.containsKey(method.getName())) {
 //                    System.out.println(methodList.get(method.getName()));
                     if (method.getName().contains("find")) {
-                        sql = SqlBuilder.build()
+                        sql = MysqlBuilder.build()
                                 .tbName(tbName)
                                 .select()
                                 .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
@@ -401,7 +411,7 @@ public class Operate {
                         return getList(aClass, sql, args);
                     }
                     if (method.getName().contains("update")) {
-                        SqlBuilder builder = SqlBuilder.build()
+                        MysqlBuilder builder = MysqlBuilder.build()
                                 .base("update tb_user set");
                         // update set xxx=?
                         List<String> setParams = new ArrayList<>();
@@ -427,7 +437,7 @@ public class Operate {
                         return update(sql, args);
                     }
                     if (method.getName().contains("delete")) {
-                        sql = SqlBuilder.build()
+                        sql = MysqlBuilder.build()
                                 .tbName(tbName)
                                 .delete()
                                 .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
@@ -484,13 +494,13 @@ public class Operate {
                 // 默认CRUD接口的代理方法
                 switch (method.getName()) {
                     case "findAll": {
-                        sql = SqlBuilder.build().tbName(tbName).select().sql();
+                        sql = MysqlBuilder.build().tbName(tbName).select().sql();
                         System.out.println("执行findAll方法");
                         System.out.println("当前执行的sql语句: " + sql);
                         return Operate.getList(type1, sql);
                     }
                     case "findById": {
-                        sql = SqlBuilder.build().tbName(tbName).select().where("id", SqlCompareIdentity.EQ).sql();
+                        sql = MysqlBuilder.build().tbName(tbName).select().where("id", SqlCompareIdentity.EQ).sql();
                         System.out.println("执行findById方法");
                         System.out.println("当前执行的sql语句: " + sql);
                         return Operate.get(type1, sql, args);
@@ -502,7 +512,7 @@ public class Operate {
                         for (int i = 0; i < parseClazz.params.keySet().toArray().length; i++) {
                             paramNames[i] = parseClazz.params.keySet().toArray()[i].toString();
                         }
-                        sql = SqlBuilder.build().update(tbName, paramNames).where(parseClazz.idName, SqlCompareIdentity.EQ).sql();
+                        sql = MysqlBuilder.build().update(tbName, paramNames).where(parseClazz.idName, SqlCompareIdentity.EQ).sql();
 
                         System.out.println("执行update方法");
                         System.out.println("当前执行的sql语句: " + sql);
@@ -522,7 +532,7 @@ public class Operate {
                             paramNames[i] = parseClazz.params.keySet().toArray()[i].toString();
                         }
 
-                        sql = SqlBuilder.build().tbName(tbName).insert(paramNames).sql();
+                        sql = MysqlBuilder.build().tbName(tbName).insert(paramNames).sql();
                         System.out.println("执行insert方法");
                         System.out.println("当前执行的sql语句: " + sql);
 
@@ -534,7 +544,7 @@ public class Operate {
                         return update(sql, paramVals);
                     }
                     case "delete": {
-                        sql = SqlBuilder.build().tbName(tbName).delete().where("id", SqlCompareIdentity.EQ).sql();
+                        sql = MysqlBuilder.build().tbName(tbName).delete().where("id", SqlCompareIdentity.EQ).sql();
                         System.out.println("执行delete方法");
                         System.out.println("当前执行的sql语句: " + sql);
                         return update(sql, args[0]);
@@ -631,7 +641,7 @@ public class Operate {
                 if (methodList.containsKey(method.getName())) {
 //                    System.out.println(methodList.get(method.getName()));
                     if (method.getName().contains("find")) {
-                        sql = SqlBuilder.build()
+                        sql = MysqlBuilder.build()
                                 .tbName(tbName)
                                 .select()
                                 .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
@@ -640,7 +650,7 @@ public class Operate {
                         return getList(aClass, sql, args);
                     }
                     if (method.getName().contains("update")) {
-                        SqlBuilder builder = SqlBuilder.build()
+                        MysqlBuilder builder = MysqlBuilder.build()
                                 .base("update tb_user set");
                         // update set xxx=?
                         List<String> setParams = new ArrayList<>();
@@ -666,7 +676,7 @@ public class Operate {
                         return update(sql, args);
                     }
                     if (method.getName().contains("delete")) {
-                        sql = SqlBuilder.build()
+                        sql = MysqlBuilder.build()
                                 .tbName(tbName)
                                 .delete()
                                 .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
