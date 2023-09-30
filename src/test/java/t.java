@@ -286,20 +286,9 @@ public class t {
         cnt = mapper.delete_by_username_gen("yyy");
         System.out.println("影响了" + cnt + "条数据");
     }
+
     @Test
-    public void testEntityParamGenFn_1() throws IOException, ClassNotFoundException {
-        // 扫描实体类
+    public void testGen() throws IOException, ClassNotFoundException {
         Operate.scan(t.class);
-        UserRepository mapper = Operate.getMapper(UserRepository.class);
-
-        List<TbUser> users = mapper.find_by_username_gen("张三");
-        System.out.println(users);
-
-        int cnt = 0;
-        cnt = mapper.update_by_username_gen("1314", "女", "zh_cn", "eman");
-        System.out.println("影响了" + cnt + "条数据");
-
-        cnt = mapper.delete_by_username_gen("yyy");
-        System.out.println("影响了" + cnt + "条数据");
     }
 }

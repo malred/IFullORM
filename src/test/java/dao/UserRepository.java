@@ -16,7 +16,8 @@ import java.util.List;
 // 然后sqlbuilder拼接sql
 // 根据泛型类的字段分别创建crudbyxxx
 @Repository("tb_user")
-public interface UserRepository extends BaseCRUDRepository<TbUser> {
+//public interface UserRepository extends BaseCRUDRepository<TbUser> {
+public interface UserRepository extends TbUserGenRepository {
     @Select("select * from tb_user where username=?")
     public TbUser selectOneByUsername(String username);
 
@@ -43,9 +44,5 @@ public interface UserRepository extends BaseCRUDRepository<TbUser> {
     @Insert("insert into tb_user(username,password) values (?,?),(?,?)")
     public int addUser(String uname1, String pass1, String uname2, String pass2);
 
-    public List<TbUser> find_by_username_gen(String username);
 
-    public int update_by_username_gen(String password, String gender, String addr, String username);
-
-    public int delete_by_username_gen(String username);
 }

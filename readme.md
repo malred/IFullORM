@@ -298,3 +298,116 @@ public class t {
     }
 }
 ```
+
+# 更新日志 2023-9-30
+
+之前更新了根据实体类字段名生成方法名, 然后实现其代理逻辑, repository只需要定义一个符合命名规则的方法就可以使用; 这次更新,
+则可以自动生成带这些方法名的repository, 而且继承了baseRepository, 用户只需要定义一个repository继承就可以使用这些方法
+
+## 生成代码
+
+```java
+@ScanEntity("entity")
+public class t {
+    @Test
+    public void testGen() throws IOException, ClassNotFoundException {
+        Operate.scan(t.class);
+    }
+}
+```
+
+## 生成后的repository
+
+```java 
+import org.malred.repository.BaseCRUDRepository;
+import entity.TbUser;
+
+import java.util.List;
+
+public interface TbUserGenRepository extends BaseCRUDRepository<TbUser> {
+
+    public List<TbUser> find_by_password_gen(String password);
+
+    public int update_by_password_gen(
+            String gender,
+            String addr,
+            String username,
+            String password
+    );
+
+    public int delete_by_password_gen(String password);
+
+    public List<TbUser> find_by_gender_gen(String gender);
+
+    public int update_by_gender_gen(
+            String password,
+            String addr,
+            String username,
+            String gender
+    );
+
+    public int delete_by_gender_gen(String gender);
+
+    public List<TbUser> find_by_addr_gen(String addr);
+
+    public int update_by_addr_gen(
+            String password,
+            String gender,
+            String username,
+            String addr
+    );
+
+    public int delete_by_addr_gen(String addr);
+
+    public List<TbUser> find_by_username_gen(String username);
+
+    public int update_by_username_gen(
+            String password,
+            String gender,
+            String addr,
+            String username
+    );
+
+    public int delete_by_username_gen(String username);
+}
+```
+
+## 用户定义repository继承
+
+```java
+package dao;
+
+import entity.ProductAndUser;
+import entity.TbUser;
+
+import java.util.List;
+
+@Repository("tb_user")
+public interface UserRepository extends TbUserGenRepository {
+}
+```
+
+## 使用
+
+```java
+
+@ScanEntity("entity")
+public class t {
+    @Test
+    public void testEntityParamGenFn() throws IOException, ClassNotFoundException {
+        // 扫描实体类, 生成代码(在resource包下)
+        Operate.scan(t.class);
+        UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
+
+        List<TbUser> users = mapper.find_by_username_gen("张三");
+        System.out.println(users);
+
+        int cnt = 0;
+        cnt = mapper.update_by_username_gen("1314", "女", "zh_cn", "eman");
+        System.out.println("影响了" + cnt + "条数据");
+
+        cnt = mapper.delete_by_username_gen("yyy");
+        System.out.println("影响了" + cnt + "条数据");
+    }
+}
+```

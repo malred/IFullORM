@@ -7,6 +7,7 @@ import org.malred.annotations.sql.Delete;
 import org.malred.annotations.sql.Insert;
 import org.malred.annotations.sql.Select;
 import org.malred.annotations.sql.Update;
+import org.malred.utils.GenUtils;
 import org.malred.utils.JDBCUtils;
 import org.malred.utils.LoadUtils;
 import org.malred.cores.builder.mysql.MysqlBuilder;
@@ -20,6 +21,10 @@ import java.util.*;
 public class Operate {
     // 表名-实体类
     static HashMap<String, Class<?>> entitys = new HashMap<>();
+    // 表名 - <gen方法名-属性名>
+    static Map<String, Map<String, String>> methodMap = new HashMap<>();
+    // 表名 - upt使用的params名
+    static Map<String, String[]> paramsMap = new HashMap<>();
 
     public static void scan(Class<?> clazz) throws IOException, ClassNotFoundException {
         if (clazz.isAnnotationPresent(ScanEntity.class)) {
@@ -27,12 +32,84 @@ public class Operate {
             for (int i = 0; i < annotation.value().length; i++) {
                 // 根据路径获取class
                 List<Class<?>> classes = LoadUtils.loadClass(annotation.value()[i]);
+                // 参数名 - 参数类型
+                Map<String, String> paramGenMap = null;
+                Map<String, String> uptParams = null;
                 // 存入map
                 for (Class<?> aClass : classes) {
 //                    String simpleName = aClass.getSimpleName();
                     if (aClass.isAnnotationPresent(Entity.class)) {
                         Entity entityAnno = aClass.getAnnotation(Entity.class);
                         entitys.put(entityAnno.value(), aClass);
+                        // 生成方法名
+//                        Class<?> aClass = entitys.get(tbName);
+                        String tbName = entityAnno.value();
+                /*
+                    id
+                    username
+                    password
+                    gender
+                    addr
+                    ---------
+                    find_by_id_gen
+                    find_by_username_gen
+                    find_by_password_gen
+                    find_by_gender_gen
+                    find_by_addr_gen
+
+                    update_by_id_gen
+                    update_by_username_gen
+                    update_by_password_gen
+                    update_by_gender_gen
+                    update_by_addr_gen
+
+                    delete_by_id_gen
+                    delete_by_username_gen
+                    delete_by_password_gen
+                    delete_by_gender_gen
+                    delete_by_addr_gen
+                 */
+                        // key方法名 - val属性名
+                        Map<String, String> methodList = new HashMap<>();
+
+                        paramGenMap = new HashMap<>();
+
+                        Field[] declaredFields = aClass.getDeclaredFields();
+                        String[] params = new String[declaredFields.length];
+                        for (int j = 0; j < declaredFields.length; j++) {
+                            declaredFields[j].setAccessible(true);
+                            String name = declaredFields[j].getName();
+                            String methodNameFind = "find_by_" + name + "_gen";
+                            String methodNameUpt = "update_by_" + name + "_gen";
+                            String methodNameDel = "delete_by_" + name + "_gen";
+
+                            methodList.put(methodNameFind, name);
+                            methodList.put(methodNameUpt, name);
+                            methodList.put(methodNameDel, name);
+                            // 用于update设置set字段
+                            params[j] = declaredFields[j].getName();
+
+                            // 用于生成代码
+//                            System.out.println(declaredFields[j].getType().getSimpleName());
+//                            if (!declaredFields[j].getName().contains("id")) {
+                            paramGenMap.put(name, declaredFields[j].getType().getSimpleName());
+//                            }
+                        }
+//                System.out.println(methodList);
+                        methodMap.put(tbName, methodList);
+                        paramsMap.put(tbName, params);
+
+                        uptParams = new HashMap<>();
+                        for (String s : paramGenMap.keySet()) {
+                            if (!s.contains("id")) {
+                                uptParams.put(s, paramGenMap.get(s));
+                            }
+                        }
+//                        System.out.println(aClass.getTypeName());
+//                        System.out.println(aClass.getName());
+                        String entityFullName = aClass.getName();
+                        String entityName = aClass.getSimpleName();
+                        GenUtils.genMethodRepository(entityName, entityFullName, uptParams);
                     }
                 }
             }
@@ -594,50 +671,11 @@ public class Operate {
 
                 // 如果不是上面的, 就走我们根据entity创建的方法
                 Class<?> aClass = entitys.get(tbName);
-                /*
-                    id
-                    username
-                    password
-                    gender
-                    addr
-                    ---------
-                    find_by_id_gen
-                    find_by_username_gen
-                    find_by_password_gen
-                    find_by_gender_gen
-                    find_by_addr_gen
-
-                    update_by_id_gen
-                    update_by_username_gen
-                    update_by_password_gen
-                    update_by_gender_gen
-                    update_by_addr_gen
-
-                    delete_by_id_gen
-                    delete_by_username_gen
-                    delete_by_password_gen
-                    delete_by_gender_gen
-                    delete_by_addr_gen
-                 */
-                Map<String, String> methodList = new HashMap<>();
-
-                Field[] declaredFields = aClass.getDeclaredFields();
-                String[] params = new String[declaredFields.length];
-                for (int i = 0; i < declaredFields.length; i++) {
-                    declaredFields[i].setAccessible(true);
-                    String name = declaredFields[i].getName();
-                    String methodNameFind = "find_by_" + name + "_gen";
-                    String methodNameUpt = "update_by_" + name + "_gen";
-                    String methodNameDel = "delete_by_" + name + "_gen";
-                    methodList.put(methodNameFind, name);
-                    methodList.put(methodNameUpt, name);
-                    methodList.put(methodNameDel, name);
-                    // 用于update设置set字段
-                    params[i] = declaredFields[i].getName();
-                }
-//                System.out.println(methodList);
+                Map<String, String> methodList = methodMap.get(tbName);
+                String[] params = paramsMap.get(tbName);
 
                 System.out.println("执行根据实体类字段自动生成的方法: " + method.getName());
+                // 方法名和我们指定的被代理的gen方法名一致,就进入代理实现
                 if (methodList.containsKey(method.getName())) {
 //                    System.out.println(methodList.get(method.getName()));
                     if (method.getName().contains("find")) {
@@ -663,9 +701,11 @@ public class Operate {
                         }
                         for (int i = 0; i < setParams.size(); i++) {
                             if (i == setParams.size() - 1) {
+                                // set x=?
                                 builder.set(setParams.get(i));
                                 break;
                             }
+                            // set x=?,
                             builder.set(setParams.get(i))
                                     .comma();
                         }
@@ -685,6 +725,8 @@ public class Operate {
                         return update(sql, args);
                     }
                 }
+                // 可以在这利用模板引擎生成genRepository
+
 
                 // 返回值
                 return null;

@@ -1,0 +1,26 @@
+import org.malred.repository.BaseCRUDRepository;
+## 传入引入的实体类的全类名
+import ${entityFullName};
+import java.util.List;
+
+public interface ${entityName}GenRepository extends BaseCRUDRepository<${entityName}> {
+
+## 实体类的所有参数名
+## map<参数名,参数类型>
+#foreach($entry in $paramMap.entrySet())
+    ## entityName: 实体类名(simpleName)
+public List<${entityName}> find_by_$entry.key#[[_gen]]# ($entry.value $entry.key);
+public int update_by_$entry.key#[[_gen]]# (
+## #foreach($uptEntry in $uptParamMap.entrySet())
+#foreach($uptEntry in $paramMap.entrySet())
+#if ($uptEntry.key!=$entry.key)
+## 非条件
+$uptEntry.value $uptEntry.key,
+#end
+#end
+## 作为条件的最后传
+$entry.value $entry.key
+);
+public int delete_by_$entry.key#[[_gen]]# ($entry.value $entry.key);
+#end
+}
