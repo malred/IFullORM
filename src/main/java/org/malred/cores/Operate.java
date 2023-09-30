@@ -25,6 +25,8 @@ public class Operate {
     static Map<String, Map<String, String>> methodMap = new HashMap<>();
     // 表名 - upt使用的params名
     static Map<String, String[]> paramsMap = new HashMap<>();
+    // 用于生成代码的信息
+    static List<genClass> genClasses = new ArrayList<>();
 
     public static void scan(Class<?> clazz) throws IOException, ClassNotFoundException {
         if (clazz.isAnnotationPresent(ScanEntity.class)) {
@@ -109,12 +111,20 @@ public class Operate {
 //                        System.out.println(aClass.getName());
                         String entityFullName = aClass.getName();
                         String entityName = aClass.getSimpleName();
-                        GenUtils.genMethodRepository(entityName, entityFullName, uptParams);
+                        genClass genClass = new genClass(uptParams, entityFullName, entityName);
+                        genClasses.add(genClass);
                     }
                 }
             }
         }
 //        System.out.println(entitys);
+    }
+
+    public static void gen() throws IOException {
+        for (int i = 0; i < genClasses.size(); i++) {
+            genClass genClass = genClasses.get(i);
+            GenUtils.genMethodRepository(genClass.entityName, genClass.entityFullName, genClass.uptParams);
+        }
     }
 
     //通用的更新数据库的方法：insert,update,delete 语句时
@@ -155,8 +165,6 @@ public class Operate {
         JDBCUtils.close(pst);
         return len;
     }
-
-    //通用的查询方法之一：查询一行，即一个对象
 
     /**
      * 执行查询操作的 SQL 语句，SQL 可以带参数(?)
@@ -213,8 +221,7 @@ public class Operate {
         return t;
     }
 
-    //通用的查询方法之二：查询多行，即多个对象
-    //Class<T> clazz：用来创建实例对象，获取对象的属性，并设置属性值
+    //通用的查询方法之一：查询一行，即一个对象
 
     /**
      * 执行查询操作的 SQL 语句，SQL 可以带参数(?)
@@ -270,6 +277,9 @@ public class Operate {
         //7、返回结果
         return list;
     }
+
+    //通用的查询方法之二：查询多行，即多个对象
+    //Class<T> clazz：用来创建实例对象，获取对象的属性，并设置属性值
 
     //通用的查询方法之三：查询单个值
     //单值：select max(salary) from employee; 一行一列
@@ -432,48 +442,8 @@ public class Operate {
 
                 // 如果不是上面的, 就走我们根据entity创建的方法
                 Class<?> aClass = entitys.get(tbName);
-                /*
-                    id
-                    username
-                    password
-                    gender
-                    addr
-                    ---------
-                    find_by_id_gen
-                    find_by_username_gen
-                    find_by_password_gen
-                    find_by_gender_gen
-                    find_by_addr_gen
-
-                    update_by_id_gen
-                    update_by_username_gen
-                    update_by_password_gen
-                    update_by_gender_gen
-                    update_by_addr_gen
-
-                    delete_by_id_gen
-                    delete_by_username_gen
-                    delete_by_password_gen
-                    delete_by_gender_gen
-                    delete_by_addr_gen
-                 */
-                Map<String, String> methodList = new HashMap<>();
-
-                Field[] declaredFields = aClass.getDeclaredFields();
-                String[] params = new String[declaredFields.length];
-                for (int i = 0; i < declaredFields.length; i++) {
-                    declaredFields[i].setAccessible(true);
-                    String name = declaredFields[i].getName();
-                    String methodNameFind = "find_by_" + name + "_gen";
-                    String methodNameUpt = "update_by_" + name + "_gen";
-                    String methodNameDel = "delete_by_" + name + "_gen";
-                    methodList.put(methodNameFind, name);
-                    methodList.put(methodNameUpt, name);
-                    methodList.put(methodNameDel, name);
-                    // 用于update设置set字段
-                    params[i] = declaredFields[i].getName();
-                }
-//                System.out.println(methodList);
+                Map<String, String> methodList = methodMap.get(tbName);
+                String[] params = paramsMap.get(tbName);
 
                 System.out.println("执行根据实体类字段自动生成的方法: " + method.getName());
                 if (methodList.containsKey(method.getName())) {
@@ -725,8 +695,6 @@ public class Operate {
                         return update(sql, args);
                     }
                 }
-                // 可以在这利用模板引擎生成genRepository
-
 
                 // 返回值
                 return null;
@@ -734,7 +702,6 @@ public class Operate {
         });
         return (T) proxyInstance;
     }
-
 
     private static ParseClazz parseObjectArgs(Object[] args) throws IllegalAccessException {
         Object arg = args[0];
@@ -775,6 +742,18 @@ public class Operate {
             this.params = params;
             this.idName = idName;
             this.idVal = idVal;
+        }
+    }
+
+    static class genClass {
+        Map<String, String> uptParams;
+        String entityFullName;
+        String entityName;
+
+        public genClass(Map<String, String> uptParams, String entityFullName, String entityName) {
+            this.uptParams = uptParams;
+            this.entityFullName = entityFullName;
+            this.entityName = entityName;
         }
     }
 }

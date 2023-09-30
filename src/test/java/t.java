@@ -290,5 +290,6 @@ public class t {
     @Test
     public void testGen() throws IOException, ClassNotFoundException {
         Operate.scan(t.class);
+        Operate.gen();
     }
 }

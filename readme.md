@@ -312,6 +312,7 @@ public class t {
     @Test
     public void testGen() throws IOException, ClassNotFoundException {
         Operate.scan(t.class);
+        Operate.gen();
     }
 }
 ```
@@ -395,7 +396,7 @@ public interface UserRepository extends TbUserGenRepository {
 public class t {
     @Test
     public void testEntityParamGenFn() throws IOException, ClassNotFoundException {
-        // 扫描实体类, 生成代码(在resource包下)
+        // 扫描实体类 
         Operate.scan(t.class);
         UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
 
