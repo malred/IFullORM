@@ -6,8 +6,8 @@
 
     <!--https://gitee.com/malguy/ifull-orm/tree/main/-->
     <groupId>org.malred</groupId>
-    <artifactId>MalORM</artifactId>
-    <version>1.2.3</version>
+    <artifactId>mal-orm</artifactId>
+    <version>1.4.0</version>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
@@ -30,6 +30,11 @@
             <groupId>org.apache.velocity</groupId>
             <artifactId>velocity-engine-core</artifactId>
             <version>2.2</version>
+        </dependency>
+        <dependency>
+            <groupId>c3p0</groupId>
+            <artifactId>c3p0</artifactId>
+            <version>0.9.1.2</version>
         </dependency>
     </dependencies>
     <build>

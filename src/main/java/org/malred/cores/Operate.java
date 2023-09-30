@@ -569,6 +569,7 @@ public class Operate {
                             paramVals[i] = parseClazz.params.values().toArray()[i].toString();
 //                                    System.out.println(paramVals[i]);
                         }
+                        // 拼接上id
                         paramVals[paramVals.length - 1] = parseClazz.idVal.toString();
                         return Operate.update(sql, paramVals);
                     }

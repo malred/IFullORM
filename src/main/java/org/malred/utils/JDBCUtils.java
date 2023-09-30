@@ -1,6 +1,9 @@
 package org.malred.utils;
 
 
+import com.mchange.v2.c3p0.ComboPooledDataSource;
+
+import java.beans.PropertyVetoException;
 import java.sql.*;
 
 public class JDBCUtils {
@@ -43,7 +46,16 @@ public class JDBCUtils {
         JDBCUtils.password = password;
     }
 
-    public static Connection getConn() {
+    public static Connection getConn() {            // 创建连接池
+        ComboPooledDataSource comboPooledDataSource = new ComboPooledDataSource();
+        try {
+            comboPooledDataSource.setDriverClass(driverName);
+            comboPooledDataSource.setJdbcUrl(url);
+            comboPooledDataSource.setUser(user);
+            comboPooledDataSource.setPassword(password);
+        } catch (PropertyVetoException e) {
+            throw new RuntimeException(e);
+        }
         try {
             // 四要素 -> 让用户传
 //            String url = "jdbc:mysql://localhost:3307/mybatis";
@@ -51,10 +63,10 @@ public class JDBCUtils {
 //            String password = "123456";
 //            String driverName = "com.mysql.cj.jdbc.Driver";
             //实例化驱动
-            Class.forName(driverName);
+//            Class.forName(driverName);
             //获取连接
-            Connection conn = DriverManager.getConnection(url, user, password);
-            return conn;
+//            Connection conn = DriverManager.getConnection(url, user, password);
+            return comboPooledDataSource.getConnection();
         } catch (Exception e) {
             e.printStackTrace();
             return null;
