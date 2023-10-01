@@ -1,5 +1,9 @@
 package org.malred.cores;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import org.malred.annotations.cache.Cache;
+import org.malred.annotations.cache.RedisConfig;
 import org.malred.annotations.table.Entity;
 import org.malred.annotations.table.Repository;
 import org.malred.annotations.table.ScanEntity;
@@ -7,18 +11,38 @@ import org.malred.annotations.sql.Delete;
 import org.malred.annotations.sql.Insert;
 import org.malred.annotations.sql.Select;
 import org.malred.annotations.sql.Update;
-import org.malred.utils.GenUtils;
-import org.malred.utils.JDBCUtils;
-import org.malred.utils.LoadUtils;
+import org.malred.cores.cache.DefaultCache;
+import org.malred.annotations.cache.GlobalCacheType;
+import org.malred.cores.cache.MemoryCache;
+import org.malred.cores.cache.RedisCache;
+import org.malred.enums.CacheType;
+import org.malred.enums.SqlCompareIdentity;
+import org.malred.utils.*;
 import org.malred.cores.builder.mysql.MysqlBuilder;
-import org.malred.utils.SqlCompareIdentity;
+import redis.clients.jedis.Jedis;
 
 import java.io.IOException;
 import java.lang.reflect.*;
 import java.sql.*;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 
 public class Operate {
+    // 最大查询次数,到了就重新查询并cache
+    static int globalCacheQueryMaxCount = 7;
+    // 缓存计数器,到7刷新
+//    public static Map<String, Integer> selectCounts = new HashMap<>();
+    // 缓存select
+//    public static Map<String, Object> selectCaches = new HashMap<>();
+    // 缓存类型
+    static CacheType globalCacheType;
+    // 默认缓存对象
+    static DefaultCache cache = new MemoryCache();
+    // 用户注解定义的方法的缓存对象
+    static DefaultCache annotationMethodCache = new MemoryCache();
+    // 生成方法的缓存对象
+    static DefaultCache genMethodCache = new MemoryCache();
     // 表名-实体类
     static HashMap<String, Class<?>> entitys = new HashMap<>();
     // 表名 - <gen方法名-属性名>
@@ -27,6 +51,15 @@ public class Operate {
     static Map<String, String[]> paramsMap = new HashMap<>();
     // 用于生成代码的信息
     static List<genClass> genClasses = new ArrayList<>();
+    private static boolean isUseCache = false;
+
+    public static int getGlobalCacheQueryMaxCount() {
+        return globalCacheQueryMaxCount;
+    }
+//    private static Operate instance;
+//
+//    private Operate() {
+//    }
 
     public static void scan(Class<?> clazz) throws IOException, ClassNotFoundException {
         if (clazz.isAnnotationPresent(ScanEntity.class)) {
@@ -118,6 +151,31 @@ public class Operate {
             }
         }
 //        System.out.println(entitys);
+        if (clazz.isAnnotationPresent(GlobalCacheType.class)) {
+            // 记录全局的缓存类型: memory/redis/...
+            GlobalCacheType annotation = clazz.getAnnotation(GlobalCacheType.class);
+            globalCacheType = annotation.value();
+            switch (globalCacheType) {
+                case memory:
+                    cache = new MemoryCache();
+                    break;
+                case redis:
+                    String host = "localhost";
+                    int port = 6379;
+                    if (clazz.isAnnotationPresent(RedisConfig.class)) {
+                        RedisConfig redisAnno = clazz.getAnnotation(RedisConfig.class);
+                        host = redisAnno.host();
+                        port = redisAnno.port();
+                    }
+//                    Jedis jedis = new Jedis(host, port);
+//                    cache = new RedisCache(jedis);
+                    cache = new RedisCache(host, port);
+                    break;
+            }
+        } else {
+            // 默认为内存cache
+            cache = new MemoryCache();
+        }
     }
 
     public static void gen() throws IOException {
@@ -165,6 +223,8 @@ public class Operate {
         JDBCUtils.close(pst);
         return len;
     }
+
+    //通用的查询方法之一：查询一行，即一个对象
 
     /**
      * 执行查询操作的 SQL 语句，SQL 可以带参数(?)
@@ -221,7 +281,8 @@ public class Operate {
         return t;
     }
 
-    //通用的查询方法之一：查询一行，即一个对象
+    //通用的查询方法之二：查询多行，即多个对象
+    //Class<T> clazz：用来创建实例对象，获取对象的属性，并设置属性值
 
     /**
      * 执行查询操作的 SQL 语句，SQL 可以带参数(?)
@@ -278,9 +339,6 @@ public class Operate {
         return list;
     }
 
-    //通用的查询方法之二：查询多行，即多个对象
-    //Class<T> clazz：用来创建实例对象，获取对象的属性，并设置属性值
-
     //通用的查询方法之三：查询单个值
     //单值：select max(salary) from employee; 一行一列
     //select count(*) from t_goods; 一共几件商品
@@ -314,6 +372,9 @@ public class Operate {
      * @return
      */
     public static <T> T getMapper(Class<?> mapperClass) {
+        // 开始执行的时间
+        Instant start = Instant.now();
+
         // 使用JDK动态代理为Dao接口生成代理对象,并返回
         Object proxyInstance = Proxy.newProxyInstance(Operate.class.getClassLoader(), new Class[]{mapperClass}, new InvocationHandler() {
             @Override
@@ -338,19 +399,102 @@ public class Operate {
 //                        System.out.println(sql);
                 String sql = "";
 
+                String uuid = UUID.randomUUID().toString();
+
+                // 默认CRUD接口的代理方法
                 // 默认CRUD接口的代理方法
                 switch (method.getName()) {
                     case "findAll": {
+//                        System.out.println(isUseCache);
+//                        System.out.println(selectCaches.get(tbName + ".findAll"));
+                        String cacheName = tbName + ".findAll";
+//                        if (isUseCache && selectCaches.get(cacheName) != null
+//                                && (selectCounts.get(cacheName) % 7) != 0) {
+                        if (isUseCache && cache.getCache(cacheName) != null && (cache.getCount(cacheName) % globalCacheQueryMaxCount) != 0) {
+                            System.out.println(uuid + ": 执行findAll方法");
+                            System.out.println(uuid + ": 从缓存中读取");
+//                            selectCounts.put(cacheName, selectCounts.get(cacheName) + 1);
+                            cache.count(cacheName);
+//                            System.out.println(selectCounts.get(cacheName));
+//                            return selectCaches.get(cacheName);
+
+                            // 执行结束
+                            Instant end = Instant.now();
+                            Duration between = Duration.between(start, end);
+                            System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+                            Object res = cache.getCache(cacheName);
+//                            if (globalCacheType == CacheType.redis) {
+//                                List objs = new ArrayList();
+//                                for (Object s : (List) res) {
+//                                    GsonBuilder gsonBuilder = new GsonBuilder();
+//                                    // 设置日期转换格式
+//                                    gsonBuilder.setDateFormat("yyyy-MM--dd");
+//                                    Gson gson = gsonBuilder.create();
+//                                    //解析对象：第一个参数：待解析的字符串 第二个参数结果数据类型的Class对象
+//                                    objs.add(gson.fromJson(s.toString(), type));
+//                                }
+//                            }
+                            return res;
+                        }
                         sql = MysqlBuilder.build().tbName(tbName).select().sql();
-                        System.out.println("执行findAll方法");
-                        System.out.println("当前执行的sql语句: " + sql);
-                        return Operate.getList(type, sql);
+                        System.out.println(uuid + ": 执行findAll方法");
+                        System.out.println(uuid + ": 当前执行的sql语句: " + sql);
+                        Object obj = Operate.getList(type, sql);
+
+                        // false -> 不存不取; true -> 为null,存,不为null,取
+                        // 使用缓存才存入map
+                        if (isUseCache) {
+                            System.out.println(uuid + ": 缓存查询结果");
+//                            selectCounts.put(cacheName, 1);
+//                            selectCaches.put(cacheName, obj);
+                            cache.count(cacheName);
+                            cache.cacheTo(cacheName, obj);
+                        }
+//                        System.out.println(selectCaches.get(tbName + ".findAll"));
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return obj;
                     }
                     case "findById": {
+                        String cacheName = tbName + ".findById";
+//                        if (isUseCache && selectCaches.get(cacheName) != null
+//                                && (selectCounts.get(cacheName) % 7) != 0) {
+                        if (isUseCache && cache.getCache(cacheName) != null && (cache.getCount(cacheName) % globalCacheQueryMaxCount) != 0) {
+                            System.out.println(uuid + ": 执行findById方法");
+                            System.out.println(uuid + ": 从缓存中读取");
+                            // 计数+1
+//                            selectCounts.put(cacheName, selectCounts.get(cacheName) + 1);
+                            cache.count(cacheName);
+//                            System.out.println(selectCounts.get(cacheName));
+//                            return selectCaches.get(cacheName);
+
+                            Instant end = Instant.now();
+                            Duration between = Duration.between(start, end);
+                            System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                            return cache.getCache(cacheName);
+                        }
                         sql = MysqlBuilder.build().tbName(tbName).select().where("id", SqlCompareIdentity.EQ).sql();
-                        System.out.println("执行findById方法");
-                        System.out.println("当前执行的sql语句: " + sql);
-                        return Operate.get(type, sql, args);
+                        System.out.println(uuid + ": 执行findById方法");
+                        System.out.println(uuid + ": 当前执行的sql语句: " + sql);
+                        Object res = Operate.get(type, sql, args);
+                        // 使用缓存才存入map
+                        if (isUseCache) {
+                            System.out.println(uuid + ": 缓存查询结果");
+//                            selectCounts.put(cacheName, 1);
+//                            selectCaches.put(cacheName, res);
+                            cache.count(cacheName);
+                            cache.cacheTo(cacheName, res);
+                        }
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return res;
                     }
                     case "update": {
                         ParseClazz parseClazz = parseObjectArgs(args);
@@ -361,17 +505,23 @@ public class Operate {
                         }
                         sql = MysqlBuilder.build().update(tbName, paramNames).where(parseClazz.idName, SqlCompareIdentity.EQ).sql();
 
-                        System.out.println("执行update方法");
-                        System.out.println("当前执行的sql语句: " + sql);
+                        System.out.println(uuid + ": 执行update方法");
+                        System.out.println(uuid + ": 当前执行的sql语句: " + sql);
 
                         String[] paramVals = new String[parseClazz.params.values().size() + 1];
                         for (int i = 0; i < parseClazz.params.values().toArray().length; i++) {
                             paramVals[i] = parseClazz.params.values().toArray()[i].toString();
 //                                    System.out.println(paramVals[i]);
                         }
+                        // 拼接上id
                         paramVals[paramVals.length - 1] = parseClazz.idVal.toString();
-                        return Operate.update(sql, paramVals);
-//                                return 1;
+                        int res = Operate.update(sql, paramVals);
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return res;
                     }
                     case "insert": {
                         ParseClazz parseClazz = parseObjectArgs(args);
@@ -381,30 +531,68 @@ public class Operate {
                         }
 
                         sql = MysqlBuilder.build().tbName(tbName).insert(paramNames).sql();
-                        System.out.println("执行insert方法");
-                        System.out.println("当前执行的sql语句: " + sql);
+                        System.out.println(uuid + ": 执行insert方法");
+                        System.out.println(uuid + ": 当前执行的sql语句: " + sql);
 
                         String[] paramVals = new String[parseClazz.params.values().size()];
                         for (int i = 0; i < parseClazz.params.values().toArray().length; i++) {
                             paramVals[i] = parseClazz.params.values().toArray()[i].toString();
 //                                    System.out.println(paramVals[i]);
                         }
-                        return update(sql, paramVals);
+                        int res = update(sql, paramVals);
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return res;
                     }
                     case "delete": {
                         sql = MysqlBuilder.build().tbName(tbName).delete().where("id", SqlCompareIdentity.EQ).sql();
-                        System.out.println("执行delete方法");
-                        System.out.println("当前执行的sql语句: " + sql);
-                        return update(sql, args[0]);
+                        System.out.println(uuid + ": 执行delete方法");
+                        System.out.println(uuid + ": 当前执行的sql语句: " + sql);
+                        int res = update(sql, args[0]);
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return res;
                     }
                 }
 
                 // 如果都不是上面的,就是用户自己定义的
                 if (method.isAnnotationPresent(Select.class)) {
-                    System.out.println("执行用户注解定义的方法: " + method.getName());
+                    String cacheName = tbName + "." + method.getName();
+                    System.out.println(uuid + ": 执行用户注解定义的方法: " + method.getName());
                     Select selectAnno = method.getAnnotation(Select.class);
                     sql = selectAnno.value();
-                    System.out.println("当前sql: " + sql);
+                    System.out.println(uuid + ": 当前sql: " + sql);
+
+                    // 默认为全局的阈值
+                    int countToReCache = globalCacheQueryMaxCount;
+                    Cache cacheAnno = method.getAnnotation(Cache.class);
+                    boolean annoUseCache = false;
+                    // 多少次查询后重新缓存
+                    if (method.isAnnotationPresent(Cache.class)) {
+                        countToReCache = cacheAnno.count();
+                        annoUseCache = cacheAnno.useCache();
+                    }
+                    // 可以注解方法单独开启cache
+                    // 也可以是跟随全局一起
+                    boolean useCache = isUseCache || annoUseCache;
+                    // 从缓存读取
+                    if (useCache && cache.getCache(cacheName) != null && (cache.getCount(cacheName) % countToReCache) != 0) {
+                        System.out.println(uuid + ": 从缓存中读取");
+                        // 有没有在cache注解定义缓存的地方,如果没有或者和默认的一样,就用默认(全局type)
+                        cache.count(cacheName);
+                        // 执行结束
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return cache.getCache(cacheName);
+                    }
                     // 判断是查询单个还是多个(返回值类型是List之类的吗)
                     // 这里只是简单判断一下
 //                            Type genericReturnType = method.getGenericReturnType();
@@ -414,30 +602,72 @@ public class Operate {
 //                            }
 //                            if (x instanceof Map<?,?>){
 //                            }
-                        return Operate.getList(type, sql, args);
+                        Object res = Operate.getList(type, sql, args);
+
+                        if (useCache) {
+                            System.out.println(uuid + ": 缓存查询结果");
+                            cache.count(cacheName);
+                            cache.cacheTo(cacheName, res);
+                        }
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return res;
                     }
-                    return Operate.get(type, sql, args);
+                    Object res = Operate.get(type, sql, args);
+
+                    if (useCache) {
+                        System.out.println(uuid + ": 缓存查询结果");
+                        cache.count(cacheName);
+                        cache.cacheTo(cacheName, res);
+                    }
+
+                    Instant end = Instant.now();
+                    Duration between = Duration.between(start, end);
+                    System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                    return res;
                 }
                 if (method.isAnnotationPresent(Update.class)) {
-                    System.out.println("执行用户注解定义的方法: " + method.getName());
+                    System.out.println(uuid + ": 执行用户注解定义的方法: " + method.getName());
                     Update anno = method.getAnnotation(Update.class);
                     sql = anno.value();
-                    System.out.println("当前sql: " + sql);
-                    return update(sql, args);
+                    System.out.println(uuid + ": 当前sql: " + sql);
+                    int res = update(sql, args);
+
+                    Instant end = Instant.now();
+                    Duration between = Duration.between(start, end);
+                    System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                    return res;
                 }
                 if (method.isAnnotationPresent(Delete.class)) {
-                    System.out.println("执行用户注解定义的方法: " + method.getName());
+                    System.out.println(uuid + ": 执行用户注解定义的方法: " + method.getName());
                     Delete anno = method.getAnnotation(Delete.class);
                     sql = anno.value();
-                    System.out.println("当前sql: " + sql);
-                    return update(sql, args);
+                    System.out.println(uuid + ": 当前sql: " + sql);
+                    int res = update(sql, args);
+
+                    Instant end = Instant.now();
+                    Duration between = Duration.between(start, end);
+                    System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                    return res;
                 }
                 if (method.isAnnotationPresent(Insert.class)) {
-                    System.out.println("执行用户注解定义的方法: " + method.getName());
+                    System.out.println(uuid + ": 执行用户注解定义的方法: " + method.getName());
                     Insert anno = method.getAnnotation(Insert.class);
                     sql = anno.value();
-                    System.out.println("当前sql: " + sql);
-                    return update(sql, args);
+                    System.out.println(uuid + ": 当前sql: " + sql);
+                    int res = update(sql, args);
+
+                    Instant end = Instant.now();
+                    Duration between = Duration.between(start, end);
+                    System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                    return res;
                 }
 
                 // 如果不是上面的, 就走我们根据entity创建的方法
@@ -446,51 +676,78 @@ public class Operate {
                 String[] params = paramsMap.get(tbName);
 
                 System.out.println("执行根据实体类字段自动生成的方法: " + method.getName());
+
+                String cacheName = tbName + "." + method.getName();
+                if (isUseCache && cache.getCache(cacheName) != null && (cache.getCount(cacheName) % globalCacheQueryMaxCount) != 0) {
+                    System.out.println(uuid + ": 从缓存中读取");
+                    cache.count(cacheName);
+
+                    // 执行结束
+                    Instant end = Instant.now();
+                    Duration between = Duration.between(start, end);
+                    System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                    return cache.getCache(cacheName);
+                }
+                // 方法名和我们指定的被代理的gen方法名一致,就进入代理实现
                 if (methodList.containsKey(method.getName())) {
 //                    System.out.println(methodList.get(method.getName()));
                     if (method.getName().contains("find")) {
-                        sql = MysqlBuilder.build()
-                                .tbName(tbName)
-                                .select()
-                                .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
-                                .sql();
+                        sql = MysqlBuilder.build().tbName(tbName).select().where(methodList.get(method.getName()), SqlCompareIdentity.EQ).sql();
                         System.out.println("当前sql: " + sql);
-                        return getList(aClass, sql, args);
+                        Object obj = getList(aClass, sql, args);
+
+                        if (isUseCache) {
+                            System.out.println(uuid + ": 缓存查询结果");
+                            cache.count(cacheName);
+                            cache.cacheTo(cacheName, obj);
+                        }
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return obj;
                     }
                     if (method.getName().contains("update")) {
-                        MysqlBuilder builder = MysqlBuilder.build()
-                                .base("update tb_user set");
+                        MysqlBuilder builder = MysqlBuilder.build().base("update tb_user set");
                         // update set xxx=?
                         List<String> setParams = new ArrayList<>();
                         for (int i = 0; i < params.length; i++) {
                             // 不等于作为条件的字段
-                            if (!params[i].contains("id") &&
-                                    !methodList.get(method.getName()).equals(params[i])) {
+                            if (!params[i].contains("id") && !methodList.get(method.getName()).equals(params[i])) {
                                 setParams.add(params[i]);
                             }
                         }
                         for (int i = 0; i < setParams.size(); i++) {
                             if (i == setParams.size() - 1) {
+                                // set x=?
                                 builder.set(setParams.get(i));
                                 break;
                             }
-                            builder.set(setParams.get(i))
-                                    .comma();
+                            // set x=?,
+                            builder.set(setParams.get(i)).comma();
                         }
-                        sql = builder
-                                .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
-                                .sql();
+                        sql = builder.where(methodList.get(method.getName()), SqlCompareIdentity.EQ).sql();
                         System.out.println("当前sql: " + sql);
-                        return update(sql, args);
+                        int obj = update(sql, args);
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return obj;
                     }
                     if (method.getName().contains("delete")) {
-                        sql = MysqlBuilder.build()
-                                .tbName(tbName)
-                                .delete()
-                                .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
-                                .sql();
+                        sql = MysqlBuilder.build().tbName(tbName).delete().where(methodList.get(method.getName()), SqlCompareIdentity.EQ).sql();
                         System.out.println("当前sql: " + sql);
-                        return update(sql, args);
+                        int obj = update(sql, args);
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return obj;
                     }
                 }
                 // 返回值
@@ -513,10 +770,14 @@ public class Operate {
         Object proxyInstance = Proxy.newProxyInstance(Operate.class.getClassLoader(), new Class[]{mapperClass}, new InvocationHandler() {
             @Override
             public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+                // 开始执行的时间
+                Instant start = Instant.now();
+
                 // 用户定义的方法的返回类型
                 Class<?> type = null;
                 //获取方法的返回值类型
                 Type genericReturnType = method.getGenericReturnType();
+                // 如果是findAll和findById,拿到的是T,会报错
                 if (!method.getName().equals("findAll") && !method.getName().equals("findById")) {
                     if (genericReturnType instanceof ParameterizedType) {
                         Type[] actualTypeArguments = ((ParameterizedType) genericReturnType).getActualTypeArguments();
@@ -538,19 +799,132 @@ public class Operate {
 
                 String sql = "";
 
+                String uuid = String.valueOf(UUID.randomUUID());
+
                 // 默认CRUD接口的代理方法
                 switch (method.getName()) {
                     case "findAll": {
+//                        System.out.println(isUseCache);
+//                        System.out.println(selectCaches.get(tbName + ".findAll"));
+                        String cacheName = tbName + ".findAll";
+//                        if (isUseCache && selectCaches.get(cacheName) != null
+//                                && (selectCounts.get(cacheName) % 7) != 0) {
+                        if (isUseCache && cache.getCache(cacheName) != null && (cache.getCount(cacheName) % globalCacheQueryMaxCount) != 0) {
+                            System.out.println(uuid + ": 执行findAll方法");
+                            System.out.println(uuid + ": 从缓存中读取");
+//                            selectCounts.put(cacheName, selectCounts.get(cacheName) + 1);
+
+                            cache.count(cacheName);
+
+                            if (globalCacheType == CacheType.redis) {
+                                List caches = (List) cache.getCache(cacheName);
+                                ArrayList res = new ArrayList();
+                                for (Object s : caches) {
+                                    GsonBuilder gsonBuilder = new GsonBuilder();
+                                    // 设置日期转换格式
+                                    gsonBuilder.setDateFormat("yyyy-MM--dd");
+                                    Gson gson = gsonBuilder.create();
+                                    //解析对象：第一个参数：待解析的字符串 第二个参数结果数据类型的Class对象
+                                    res.add(gson.fromJson(s.toString(), type1));
+                                }
+
+                                cache.count(cacheName);
+//                            System.out.println(selectCounts.get(cacheName));
+//                            return selectCaches.get(cacheName);
+
+                                // 执行结束
+                                Instant end = Instant.now();
+                                Duration between = Duration.between(start, end);
+                                System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                                return res;
+                            }
+
+                            Object res = cache.getCache(cacheName);
+
+                            // 执行结束
+                            Instant end = Instant.now();
+                            Duration between = Duration.between(start, end);
+                            System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                            return res;
+                        }
+
                         sql = MysqlBuilder.build().tbName(tbName).select().sql();
-                        System.out.println("执行findAll方法");
-                        System.out.println("当前执行的sql语句: " + sql);
-                        return Operate.getList(type1, sql);
+                        System.out.println(uuid + ": 执行findAll方法");
+                        System.out.println(uuid + ": 当前执行的sql语句: " + sql);
+                        Object obj = Operate.getList(type1, sql);
+
+                        // false -> 不存不取; true -> 为null,存,不为null,取
+                        // 使用缓存才存入map
+                        if (isUseCache) {
+                            System.out.println(uuid + ": 缓存查询结果");
+//                            selectCounts.put(cacheName, 1);
+//                            selectCaches.put(cacheName, obj);
+                            cache.count(cacheName);
+                            cache.cacheTo(cacheName, obj);
+                        }
+
+                        cache.count(cacheName);
+//                        System.out.println(selectCaches.get(tbName + ".findAll"));
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return obj;
                     }
                     case "findById": {
+                        String cacheName = tbName + ".findById";
+//                        if (isUseCache && selectCaches.get(cacheName) != null
+//                                && (selectCounts.get(cacheName) % 7) != 0) {
+                        if (isUseCache && cache.getCache(cacheName) != null && (cache.getCount(cacheName) % globalCacheQueryMaxCount) != 0) {
+                            System.out.println(uuid + ": 执行findById方法");
+                            System.out.println(uuid + ": 从缓存中读取");
+
+                            cache.count(cacheName);
+
+                            if (globalCacheType == CacheType.redis) {
+                                GsonBuilder gsonBuilder = new GsonBuilder();
+                                // 设置日期转换格式
+                                gsonBuilder.setDateFormat("yyyy-MM--dd");
+                                Gson gson = gsonBuilder.create();
+                                List<String> cache1 = (List<String>) cache.getCache(cacheName);
+
+                                Instant end = Instant.now();
+                                Duration between = Duration.between(start, end);
+                                System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                                return gson.fromJson(cache1.get(0).toString(), type1);
+                            }
+
+                            Instant end = Instant.now();
+                            Duration between = Duration.between(start, end);
+                            System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                            return cache.getCache(cacheName);
+                        }
+
                         sql = MysqlBuilder.build().tbName(tbName).select().where("id", SqlCompareIdentity.EQ).sql();
-                        System.out.println("执行findById方法");
-                        System.out.println("当前执行的sql语句: " + sql);
-                        return Operate.get(type1, sql, args);
+                        System.out.println(uuid + ": 执行findById方法");
+                        System.out.println(uuid + ": 当前执行的sql语句: " + sql);
+                        Object res = Operate.get(type1, sql, args);
+
+                        // 使用缓存才存入map
+                        if (isUseCache) {
+                            System.out.println(uuid + ": 缓存查询结果");
+//                            selectCounts.put(cacheName, 1);
+//                            selectCaches.put(cacheName, res);
+                            cache.count(cacheName);
+                            cache.cacheTo(cacheName, res);
+                        }
+                        cache.count(cacheName);
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return res;
                     }
                     case "update": {
                         ParseClazz parseClazz = parseObjectArgs(args);
@@ -561,8 +935,8 @@ public class Operate {
                         }
                         sql = MysqlBuilder.build().update(tbName, paramNames).where(parseClazz.idName, SqlCompareIdentity.EQ).sql();
 
-                        System.out.println("执行update方法");
-                        System.out.println("当前执行的sql语句: " + sql);
+                        System.out.println(uuid + ": 执行update方法");
+                        System.out.println(uuid + ": 当前执行的sql语句: " + sql);
 
                         String[] paramVals = new String[parseClazz.params.values().size() + 1];
                         for (int i = 0; i < parseClazz.params.values().toArray().length; i++) {
@@ -571,7 +945,13 @@ public class Operate {
                         }
                         // 拼接上id
                         paramVals[paramVals.length - 1] = parseClazz.idVal.toString();
-                        return Operate.update(sql, paramVals);
+                        int res = Operate.update(sql, paramVals);
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return res;
                     }
                     case "insert": {
                         ParseClazz parseClazz = parseObjectArgs(args);
@@ -581,30 +961,102 @@ public class Operate {
                         }
 
                         sql = MysqlBuilder.build().tbName(tbName).insert(paramNames).sql();
-                        System.out.println("执行insert方法");
-                        System.out.println("当前执行的sql语句: " + sql);
+                        System.out.println(uuid + ": 执行insert方法");
+                        System.out.println(uuid + ": 当前执行的sql语句: " + sql);
 
                         String[] paramVals = new String[parseClazz.params.values().size()];
                         for (int i = 0; i < parseClazz.params.values().toArray().length; i++) {
                             paramVals[i] = parseClazz.params.values().toArray()[i].toString();
 //                                    System.out.println(paramVals[i]);
                         }
-                        return update(sql, paramVals);
+                        int res = update(sql, paramVals);
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return res;
                     }
                     case "delete": {
                         sql = MysqlBuilder.build().tbName(tbName).delete().where("id", SqlCompareIdentity.EQ).sql();
-                        System.out.println("执行delete方法");
-                        System.out.println("当前执行的sql语句: " + sql);
-                        return update(sql, args[0]);
+                        System.out.println(uuid + ": 执行delete方法");
+                        System.out.println(uuid + ": 当前执行的sql语句: " + sql);
+                        int res = update(sql, args[0]);
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return res;
                     }
                 }
 
                 // 如果都不是上面的,就是用户自己定义的
                 if (method.isAnnotationPresent(Select.class)) {
-                    System.out.println("执行用户注解定义的方法: " + method.getName());
+                    String cacheName = tbName + "." + method.getName();
+                    System.out.println(uuid + ": 执行用户注解定义的方法: " + method.getName());
                     Select selectAnno = method.getAnnotation(Select.class);
                     sql = selectAnno.value();
-                    System.out.println("当前sql: " + sql);
+                    System.out.println(uuid + ": 当前sql: " + sql);
+
+                    // 默认为全局的阈值
+                    int countToReCache = globalCacheQueryMaxCount;
+                    Cache cacheAnno = method.getAnnotation(Cache.class);
+                    boolean annoUseCache = false;
+                    // 多少次查询后重新缓存
+                    if (method.isAnnotationPresent(Cache.class)) {
+                        countToReCache = cacheAnno.count();
+                        annoUseCache = cacheAnno.useCache();
+                    }
+                    // 可以注解方法单独开启cache
+                    // 也可以是跟随全局一起
+                    boolean useCache = isUseCache || annoUseCache;
+                    // 从缓存读取
+                    if (useCache && cache.getCache(cacheName) != null && (cache.getCount(cacheName) % countToReCache) != 0) {
+                        System.out.println(uuid + ": 从缓存中读取");
+                        // 有没有在cache注解定义缓存的地方,如果没有或者和默认的一样,就用默认(全局type)
+                        cache.count(cacheName);
+
+                        if (globalCacheType == CacheType.redis) {
+                            GsonBuilder gsonBuilder = new GsonBuilder();
+                            // 设置日期转换格式
+                            gsonBuilder.setDateFormat("yyyy-MM--dd");
+                            Gson gson = gsonBuilder.create();
+
+                            List caches = (List) cache.getCache(cacheName);
+                            ArrayList res = new ArrayList();
+
+                            if (caches.size() != 1) {
+                                for (Object s : caches) {
+                                    //解析对象：第一个参数：待解析的字符串 第二个参数结果数据类型的Class对象
+                                    res.add(gson.fromJson(s.toString(), type));
+                                }
+                            } else {
+                                // 执行结束
+                                Instant end = Instant.now();
+                                Duration between = Duration.between(start, end);
+                                System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                                return gson.fromJson(caches.get(0).toString(), type);
+                            }
+
+                            // 执行结束
+                            Instant end = Instant.now();
+                            Duration between = Duration.between(start, end);
+                            System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                            return res;
+                        }
+
+                        Object res = cache.getCache(cacheName);
+
+                        // 执行结束
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return res;
+                    }
                     // 判断是查询单个还是多个(返回值类型是List之类的吗)
                     // 这里只是简单判断一下
 //                            Type genericReturnType = method.getGenericReturnType();
@@ -614,30 +1066,79 @@ public class Operate {
 //                            }
 //                            if (x instanceof Map<?,?>){
 //                            }
-                        return Operate.getList(type, sql, args);
+                        Object res = Operate.getList(type, sql, args);
+
+                        // 存入缓存
+                        if (useCache) {
+                            System.out.println(uuid + ": 缓存查询结果");
+                            cache.count(cacheName);
+                            cache.cacheTo(cacheName, res);
+                        }
+
+                        cache.count(cacheName);
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return res;
                     }
-                    return Operate.get(type, sql, args);
+
+                    Object res = Operate.get(type, sql, args);
+
+                    // 存入缓存
+                    if (useCache) {
+                        System.out.println(uuid + ": 缓存查询结果");
+                        cache.count(cacheName);
+                        cache.cacheTo(cacheName, res);
+                    }
+
+                    cache.count(cacheName);
+
+                    Instant end = Instant.now();
+                    Duration between = Duration.between(start, end);
+                    System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                    return res;
                 }
                 if (method.isAnnotationPresent(Update.class)) {
-                    System.out.println("执行用户注解定义的方法: " + method.getName());
+                    System.out.println(uuid + ": 执行用户注解定义的方法: " + method.getName());
                     Update anno = method.getAnnotation(Update.class);
                     sql = anno.value();
-                    System.out.println("当前sql: " + sql);
-                    return update(sql, args);
+                    System.out.println(uuid + ": 当前sql: " + sql);
+                    int res = update(sql, args);
+
+                    Instant end = Instant.now();
+                    Duration between = Duration.between(start, end);
+                    System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                    return res;
                 }
                 if (method.isAnnotationPresent(Delete.class)) {
-                    System.out.println("执行用户注解定义的方法: " + method.getName());
+                    System.out.println(uuid + ": 执行用户注解定义的方法: " + method.getName());
                     Delete anno = method.getAnnotation(Delete.class);
                     sql = anno.value();
-                    System.out.println("当前sql: " + sql);
-                    return update(sql, args);
+                    System.out.println(uuid + ": 当前sql: " + sql);
+                    int res = update(sql, args);
+
+                    Instant end = Instant.now();
+                    Duration between = Duration.between(start, end);
+                    System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                    return res;
                 }
                 if (method.isAnnotationPresent(Insert.class)) {
-                    System.out.println("执行用户注解定义的方法: " + method.getName());
+                    System.out.println(uuid + ": 执行用户注解定义的方法: " + method.getName());
                     Insert anno = method.getAnnotation(Insert.class);
                     sql = anno.value();
-                    System.out.println("当前sql: " + sql);
-                    return update(sql, args);
+                    System.out.println(uuid + ": 当前sql: " + sql);
+                    int res = update(sql, args);
+
+                    Instant end = Instant.now();
+                    Duration between = Duration.between(start, end);
+                    System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                    return res;
                 }
 
                 // 如果不是上面的, 就走我们根据entity创建的方法
@@ -645,28 +1146,73 @@ public class Operate {
                 Map<String, String> methodList = methodMap.get(tbName);
                 String[] params = paramsMap.get(tbName);
 
-                System.out.println("执行根据实体类字段自动生成的方法: " + method.getName());
+                System.out.println(uuid + ": 执行根据实体类字段自动生成的方法: " + method.getName());
+
                 // 方法名和我们指定的被代理的gen方法名一致,就进入代理实现
                 if (methodList.containsKey(method.getName())) {
 //                    System.out.println(methodList.get(method.getName()));
                     if (method.getName().contains("find")) {
-                        sql = MysqlBuilder.build()
-                                .tbName(tbName)
-                                .select()
-                                .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
-                                .sql();
+                        String cacheName = tbName + "." + method.getName();
+//                System.out.println(cache.getCache(cacheName));
+                        // 读取缓存
+                        if (isUseCache && cache.getCache(cacheName) != null && (cache.getCount(cacheName) % globalCacheQueryMaxCount) != 0) {
+                            System.out.println(uuid + ": 从缓存中读取");
+
+                            cache.count(cacheName);
+
+                            if (globalCacheType == CacheType.redis) {
+                                GsonBuilder gsonBuilder = new GsonBuilder();
+                                // 设置日期转换格式
+                                gsonBuilder.setDateFormat("yyyy-MM--dd");
+                                Gson gson = gsonBuilder.create();
+                                List caches = (List) cache.getCache(cacheName);
+                                ArrayList res = new ArrayList();
+                                for (Object s : caches) {
+                                    //解析对象：第一个参数：待解析的字符串 第二个参数结果数据类型的Class对象
+                                    res.add(gson.fromJson(s.toString(), type));
+                                }
+
+                                // 执行结束
+                                Instant end = Instant.now();
+                                Duration between = Duration.between(start, end);
+                                System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                                return res;
+                            }
+
+                            Instant end = Instant.now();
+                            Duration between = Duration.between(start, end);
+                            System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                            return cache.getCache(cacheName);
+                        }
+
+                        sql = MysqlBuilder.build().tbName(tbName).select().where(methodList.get(method.getName()), SqlCompareIdentity.EQ).sql();
                         System.out.println("当前sql: " + sql);
-                        return getList(aClass, sql, args);
+
+                        Object obj = getList(aClass, sql, args);
+
+                        if (isUseCache) {
+                            System.out.println(uuid + ": 缓存查询结果");
+                            cache.count(cacheName);
+                            cache.cacheTo(cacheName, obj);
+                        }
+
+                        cache.count(cacheName);
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return obj;
                     }
                     if (method.getName().contains("update")) {
-                        MysqlBuilder builder = MysqlBuilder.build()
-                                .base("update tb_user set");
+                        MysqlBuilder builder = MysqlBuilder.build().base("update tb_user set");
                         // update set xxx=?
                         List<String> setParams = new ArrayList<>();
                         for (int i = 0; i < params.length; i++) {
                             // 不等于作为条件的字段
-                            if (!params[i].contains("id") &&
-                                    !methodList.get(method.getName()).equals(params[i])) {
+                            if (!params[i].contains("id") && !methodList.get(method.getName()).equals(params[i])) {
                                 setParams.add(params[i]);
                             }
                         }
@@ -677,23 +1223,28 @@ public class Operate {
                                 break;
                             }
                             // set x=?,
-                            builder.set(setParams.get(i))
-                                    .comma();
+                            builder.set(setParams.get(i)).comma();
                         }
-                        sql = builder
-                                .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
-                                .sql();
+                        sql = builder.where(methodList.get(method.getName()), SqlCompareIdentity.EQ).sql();
                         System.out.println("当前sql: " + sql);
-                        return update(sql, args);
+                        int obj = update(sql, args);
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return obj;
                     }
                     if (method.getName().contains("delete")) {
-                        sql = MysqlBuilder.build()
-                                .tbName(tbName)
-                                .delete()
-                                .where(methodList.get(method.getName()), SqlCompareIdentity.EQ)
-                                .sql();
+                        sql = MysqlBuilder.build().tbName(tbName).delete().where(methodList.get(method.getName()), SqlCompareIdentity.EQ).sql();
                         System.out.println("当前sql: " + sql);
-                        return update(sql, args);
+                        int obj = update(sql, args);
+
+                        Instant end = Instant.now();
+                        Duration between = Duration.between(start, end);
+                        System.out.println(uuid + ": 执行耗时(毫秒): " + between.toMillis());
+
+                        return obj;
                     }
                 }
 
@@ -733,6 +1284,32 @@ public class Operate {
         }
         return new ParseClazz(params, idName, idVal);
     }
+
+    /**
+     * 查询之前调用,设置是否从缓存查询
+     *
+     * @param flag
+     */
+    public static void useCache(boolean flag) {
+        isUseCache = flag;
+        // 简单粗暴地清空缓存
+        // 用户如果true存入缓存,再用false也没办法存入,再开true也是从之前的数据
+        // 就永远拿不到新的值,这里清空,在重新为true的时候可以重新缓存
+        // 也可以考虑在true的条件下,添加计数器,如果到一定数量,就重新缓存
+        if (!isUseCache) {
+//            selectCaches = new HashMap<>();
+            // 重新计数
+//            selectCounts = new HashMap<>();
+            cache.reset();
+        }
+    }
+
+//    public static Operate newInstance() {
+//        if (instance == null) {
+//            instance = new Operate();
+//        }
+//        return instance;
+//    }
 
     static class ParseClazz {
         HashMap<String, Object> params;

@@ -3,8 +3,11 @@ package entity;
 
 import org.malred.annotations.table.Entity;
 
+import java.io.Serializable;
+
 @Entity("tb_user")
-public class TbUser {
+//public class TbUser implements Serializable {
+public class TbUser  {
 
     // can't cast Integer to Long
     private int id;

@@ -5,7 +5,12 @@ import dao.UserRepository;
 import entity.TbUser;
 import org.malred.annotations.table.ScanEntity;
 import org.malred.cores.Operate;
+import org.malred.annotations.cache.RedisConfig;
 import org.malred.cores.builder.mysql.MysqlBuilder;
+import org.malred.annotations.cache.GlobalCacheType;
+import org.malred.enums.CacheType;
+import org.malred.enums.SqlCompareIdentity;
+import org.malred.enums.SqlJoinType;
 import org.malred.utils.*;
 
 import java.io.IOException;
@@ -14,6 +19,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 @ScanEntity("entity")
+@RedisConfig(host = "localhost", port = 6379)
+@GlobalCacheType(value = CacheType.redis, count = 7)
+//@GlobalCacheType(value = CacheType.memory, count = 7)
 public class t {
     @Before
     public void before() {
@@ -68,7 +76,10 @@ public class t {
     public void testSelectMulti() throws Exception {
         ArrayList<TbUser> list;
 
-        String sql = MysqlBuilder.build().select("tb_user").where("id", SqlCompareIdentity.NE).sql();
+        String sql = MysqlBuilder.build()
+                .select("tb_user")
+                .where("id", SqlCompareIdentity.NE)
+                .sql();
         list = Operate.getList(TbUser.class, sql, 1);
         System.out.println(list);
 
@@ -169,6 +180,7 @@ public class t {
     // 基本CRUD接口的代理实现测试
     @Test
     public void testSelectProxy() {
+//        Operate operate = Operate.newInstance();
         UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
 //        UserRepository mapper = Operate.getMapper(UserRepository.class);
         List<TbUser> all = mapper.findAll();
@@ -213,11 +225,13 @@ public class t {
     // 用户定义的注解的代理实现测试
     @Test
     public void testSelectAnnotation() {
-        UserRepository mapper = Operate.getMapper(UserRepository.class);
-//        UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
+//        UserRepository mapper = Operate.getMapper(UserRepository.class);
+        UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
 
         TbUser user = mapper.selectOneByUsername("张三");
         System.out.println(user);
+        TbUser user1 = mapper.selectOneByUsername("张三");
+        System.out.println(user1);
 
         List<TbUser> tbUsers = mapper.selectOneByNEPassword("456");
         for (TbUser tbUser : tbUsers) {
@@ -291,5 +305,95 @@ public class t {
     public void testGen() throws IOException, ClassNotFoundException {
         Operate.scan(t.class);
         Operate.gen();
+    }
+
+    @Test
+    public void testSelectCache() throws IOException, ClassNotFoundException {
+//        Operate operate = Operate.newInstance();
+        UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
+        Operate.scan(this.getClass());
+//        UserRepository mapper = Operate.getMapper(UserRepository.class);
+        Operate.useCache(true);
+        List<TbUser> all = mapper.findAll();
+        System.out.println(all);
+        // 从缓存拿
+        List<TbUser> all2 = mapper.findAll();
+        System.out.println(all2);
+        // 不从缓存拿
+        Operate.useCache(false);
+        List<TbUser> all3 = mapper.findAll();
+        System.out.println(all3);
+
+        Operate.useCache(true);
+        // 第一次, 还没存入, 会缓存
+        TbUser one = mapper.findById(1);
+        System.out.println(one);
+        // 第二次, 有缓存, 直接取
+        TbUser one1 = mapper.findById(1);
+        System.out.println(one1);
+    }
+
+    @Test
+    public void testSelectCacheMore() {
+        try {
+            Operate.scan(this.getClass());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+//        Operate operate = Operate.newInstance();
+        UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
+//        UserRepository mapper = Operate.getMapper(UserRepository.class);
+        Operate.useCache(true);
+        // 第一次, 还没存入, 会缓存
+        TbUser one2 = mapper.findById(1);
+        // 第二次, 有缓存, 直接取
+        one2 = mapper.findById(1);
+        one2 = mapper.findById(1);
+        one2 = mapper.findById(1);
+        one2 = mapper.findById(1);
+        one2 = mapper.findById(1);
+        one2 = mapper.findById(1);
+        one2 = mapper.findById(1);
+        one2 = mapper.findById(1);
+        one2 = mapper.findById(1);
+        System.out.println(one2);
+
+        List<TbUser> all = null;
+        all = mapper.findAll();
+        all = mapper.findAll();
+        all = mapper.findAll();
+        all = mapper.findAll();
+        all = mapper.findAll();
+        all = mapper.findAll();
+        all = mapper.findAll();
+        all = mapper.findAll();
+        all = mapper.findAll();
+        all = mapper.findAll();
+        all = mapper.findAll();
+        System.out.println(all);
+
+        TbUser user = null;
+        user = mapper.selectOneByUsername("张三");
+        user = mapper.selectOneByUsername("张三");
+        user = mapper.selectOneByUsername("张三");
+        user = mapper.selectOneByUsername("张三");
+        user = mapper.selectOneByUsername("张三");
+        user = mapper.selectOneByUsername("张三");
+        System.out.println(user);
+
+        all = mapper.find_by_password_gen("123");
+        all = mapper.findAll();
+        all = mapper.find_by_password_gen("123");
+        all = mapper.find_by_password_gen("123");
+        all = mapper.find_by_password_gen("123");
+        all = mapper.find_by_password_gen("123");
+        all = mapper.find_by_password_gen("123");
+        all = mapper.find_by_password_gen("123");
+        all = mapper.find_by_password_gen("123");
+        all = mapper.find_by_password_gen("123");
+        System.out.println(all);
+
+        TbUser user1 = all.get(0);
+        System.out.println(user1.getAddr());
     }
 }

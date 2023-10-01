@@ -1,4 +1,4 @@
-package org.malred.utils;
+package org.malred.enums;
 
 public enum SqlCompareIdentity {
     GT,// >

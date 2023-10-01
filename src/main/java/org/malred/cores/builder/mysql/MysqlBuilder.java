@@ -1,8 +1,8 @@
 package org.malred.cores.builder.mysql;
 
 import org.malred.utils.Common;
-import org.malred.utils.SqlCompareIdentity;
-import org.malred.utils.SqlJoinType;
+import org.malred.enums.SqlCompareIdentity;
+import org.malred.enums.SqlJoinType;
 
 public class MysqlBuilder extends MysqlBuilderImpl {
     String sql;
@@ -187,4 +187,9 @@ public class MysqlBuilder extends MysqlBuilderImpl {
         sql = "delete from " + tbName;
         return this;
     }
+
+//    public MysqlBuilder useCache(boolean flag) {
+//        Operate.useCache(flag);
+//        return this;
+//    }
 }

@@ -2,12 +2,12 @@ package dao;
 
 import entity.ProductAndUser;
 import entity.TbUser;
+import org.malred.annotations.cache.Cache;
 import org.malred.annotations.sql.Delete;
 import org.malred.annotations.sql.Insert;
 import org.malred.annotations.sql.Select;
 import org.malred.annotations.sql.Update;
 import org.malred.annotations.table.Repository;
-import org.malred.repository.BaseCRUDRepository;
 
 import java.util.List;
 
@@ -19,6 +19,7 @@ import java.util.List;
 //public interface UserRepository extends BaseCRUDRepository<TbUser> {
 public interface UserRepository extends TbUserGenRepository {
     @Select("select * from tb_user where username=?")
+    @Cache(count = 3, useCache = true)
     public TbUser selectOneByUsername(String username);
 
     @Select("select * from tb_user where password!=?")
