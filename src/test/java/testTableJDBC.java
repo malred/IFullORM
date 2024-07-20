@@ -17,7 +17,8 @@ public class testTableJDBC {
     public void before() {
         // 设置数据库属性
         JDBCUtils
-                .setDataSource("jdbc:mysql://localhost:3307/mybatis?tinyInt1isBit=false",
+//                .setDataSource("jdbc:mysql://localhost:3307/mybatis?tinyInt1isBit=false",
+                .setDataSource("jdbc:mysql://localhost:3307/mybatis",
                         "com.mysql.cj.jdbc.Driver", "root", "123456");
 
 //        JDBCUtils.setSchema("mybatis");
