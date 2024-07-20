@@ -20,8 +20,8 @@ import java.util.List;
 
 @ScanEntity("entity")
 @RedisConfig(host = "localhost", port = 6379)
-@GlobalCacheType(value = CacheType.redis, count = 7)
-//@GlobalCacheType(value = CacheType.memory, count = 7)
+//@GlobalCacheType(value = CacheType.redis, count = 7)
+@GlobalCacheType(value = CacheType.memory, count = 7)
 public class t {
     @Before
     public void before() {
@@ -276,16 +276,14 @@ public class t {
     public void testLoadEntity() {
         try {
             Operate.scan(t.class);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        } catch (ClassNotFoundException e) {
+        } catch ( Exception e) {
             throw new RuntimeException(e);
         }
     }
 
     // 测试根据实体类字段自动生成的方法
     @Test
-    public void testEntityParamGenFn() throws IOException, ClassNotFoundException {
+    public void testEntityParamGenFn() throws Exception {
         // 扫描实体类
         Operate.scan(t.class);
         UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
@@ -302,13 +300,13 @@ public class t {
     }
 
     @Test
-    public void testGen() throws IOException, ClassNotFoundException {
+    public void testGen() throws Exception {
         Operate.scan(t.class);
         Operate.gen();
     }
 
     @Test
-    public void testSelectCache() throws IOException, ClassNotFoundException {
+    public void testSelectCache() throws Exception {
 //        Operate operate = Operate.newInstance();
         UserRepository mapper = Operate.getMapper(UserRepository.class, TbUser.class);
         Operate.scan(this.getClass());
@@ -381,16 +379,16 @@ public class t {
         user = mapper.selectOneByUsername("张三");
         System.out.println(user);
 
-        all = mapper.find_by_password_gen("123");
+        all = mapper.find_by_password_gen("1314");
         all = mapper.findAll();
-        all = mapper.find_by_password_gen("123");
-        all = mapper.find_by_password_gen("123");
-        all = mapper.find_by_password_gen("123");
-        all = mapper.find_by_password_gen("123");
-        all = mapper.find_by_password_gen("123");
-        all = mapper.find_by_password_gen("123");
-        all = mapper.find_by_password_gen("123");
-        all = mapper.find_by_password_gen("123");
+        all = mapper.find_by_password_gen("1314");
+        all = mapper.find_by_password_gen("1314");
+        all = mapper.find_by_password_gen("1314");
+        all = mapper.find_by_password_gen("1314");
+        all = mapper.find_by_password_gen("1314");
+        all = mapper.find_by_password_gen("1314");
+        all = mapper.find_by_password_gen("1314");
+        all = mapper.find_by_password_gen("1314");
         System.out.println(all);
 
         TbUser user1 = all.get(0);

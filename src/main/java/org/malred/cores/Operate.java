@@ -4,9 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import org.malred.annotations.cache.Cache;
 import org.malred.annotations.cache.RedisConfig;
-import org.malred.annotations.table.Entity;
-import org.malred.annotations.table.Repository;
-import org.malred.annotations.table.ScanEntity;
+import org.malred.annotations.table.*;
 import org.malred.annotations.sql.Delete;
 import org.malred.annotations.sql.Insert;
 import org.malred.annotations.sql.Select;
@@ -24,9 +22,14 @@ import redis.clients.jedis.Jedis;
 import java.io.IOException;
 import java.lang.reflect.*;
 import java.sql.*;
+import java.sql.Date;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.*;
+
+import static org.malred.utils.JDBCUtils.annoSqlPush;
+import static org.malred.utils.JDBCUtils.getSqlType;
 
 public class Operate {
     // 最大查询次数,到了就重新查询并cache
@@ -48,7 +51,8 @@ public class Operate {
     // 表名 - <gen方法名-属性名>
     static Map<String, Map<String, String>> methodMap = new HashMap<>();
     // 表名 - upt使用的params名
-    static Map<String, String[]> paramsMap = new HashMap<>();
+//    static Map<String, String[]> paramsMap = new HashMap<>();
+    static Map<String, String[]> paramsMap = new LinkedHashMap<>();
     // 用于生成代码的信息
     static List<genClass> genClasses = new ArrayList<>();
     private static boolean isUseCache = false;
@@ -61,9 +65,11 @@ public class Operate {
 //    private Operate() {
 //    }
 
-    public static void scan(Class<?> clazz) throws IOException, ClassNotFoundException {
+    public static void scan(Class<?> clazz) throws Exception {
         if (clazz.isAnnotationPresent(ScanEntity.class)) {
             ScanEntity annotation = clazz.getAnnotation(ScanEntity.class);
+
+            // 保存entity信息
             for (int i = 0; i < annotation.value().length; i++) {
                 // 根据路径获取class
                 List<Class<?>> classes = LoadUtils.loadClass(annotation.value()[i]);
@@ -76,9 +82,56 @@ public class Operate {
                     if (aClass.isAnnotationPresent(Entity.class)) {
                         Entity entityAnno = aClass.getAnnotation(Entity.class);
                         entitys.put(entityAnno.value(), aClass);
-                        // 生成方法名
-//                        Class<?> aClass = entitys.get(tbName);
                         String tbName = entityAnno.value();
+
+                        // 如果entity对于的表不存在, 就创建
+//                        if (!JDBCUtils.ValidateTableExist(tbName)) {
+                        // params name and type
+                        // hashmap 的顺序默认排序, 导致后续操作数据库时, 顺序和类字段定义的顺序不一致
+                        // 产生sql填充错位bug
+                        // linkedmap 保持插入时的顺序
+                        Map<String, String> paramTypeMap = new LinkedHashMap<>();
+
+                        Field[] declaredFields = aClass.getDeclaredFields();
+                        for (Field declaredField : declaredFields) {
+                            declaredField.setAccessible(true);
+                            String name = declaredField.getName();
+                            String type = declaredField.getType().getTypeName();
+                            paramTypeMap.put(name, type);
+                        }
+
+                        String sql = "create table " + tbName + " ( ";
+                        for (String name : paramTypeMap.keySet()) {
+                            String type = paramTypeMap.get(name);
+//                            System.out.println("type: " + type);
+//                            System.out.println("sql type: " + getSqlType(type));
+                            if (Objects.equals(getSqlType(type), "")) {
+                                // paramTypeMap.remove(type);
+                                continue;
+                            }
+
+                            // build sql
+                            sql += name;
+                            sql += " " + getSqlType(type);
+                            // 判断字段注解
+                            sql += annoSqlPush(name, aClass);
+                            sql += ", ";
+                        }
+                        sql = sql.substring(0, sql.length() - 2);
+                        sql += ");";
+                        System.out.println("建表语句构建完毕: \n" + sql);
+
+                        try {
+                            createTable(sql);
+                        } catch (Exception e) {
+                            System.out.println("table " + tbName + " exits");
+                            System.out.println(
+                                    "如果需要修改表结构, 请 删除重建 或 " +
+                                            "通过sqlBuilder.base, 用alter语句修改表"
+                            );
+                        }
+//                        }
+
                 /*
                     id
                     username
@@ -107,9 +160,9 @@ public class Operate {
                         // key方法名 - val属性名
                         Map<String, String> methodList = new HashMap<>();
 
-                        paramGenMap = new HashMap<>();
+                        paramGenMap = new LinkedHashMap<>();
 
-                        Field[] declaredFields = aClass.getDeclaredFields();
+//                        Field[] declaredFields = aClass.getDeclaredFields();
                         String[] params = new String[declaredFields.length];
                         for (int j = 0; j < declaredFields.length; j++) {
                             declaredFields[j].setAccessible(true);
@@ -133,12 +186,15 @@ public class Operate {
 //                System.out.println(methodList);
                         methodMap.put(tbName, methodList);
                         paramsMap.put(tbName, params);
+//                        System.out.println("params: " + Arrays.toString(params));
 
-                        uptParams = new HashMap<>();
+//                        uptParams = new HashMap<>();
+                        uptParams = new LinkedHashMap<>();
                         for (String s : paramGenMap.keySet()) {
                             if (!s.contains("id")) {
                                 uptParams.put(s, paramGenMap.get(s));
                             }
+//                            System.out.println(paramGenMap.get(s));
                         }
 //                        System.out.println(aClass.getTypeName());
 //                        System.out.println(aClass.getName());
@@ -214,6 +270,26 @@ public class Operate {
         if (args != null && args.length > 0) {
             //数组的下标是从 0 开始，？的编号是 1 开始
             for (int i = 0; i < args.length; i++) {
+//                System.out.println(i);
+//                System.out.println("arg: " + args[i]);
+                if (args[i] != null) {
+//                    if (args[i].getClass().getTypeName().equals("java.util.Date")) {
+//                        pst.setDate(i + 1,
+//                                Common.javaDateToSqlDate((Date) args[i]));
+//                        continue;
+//                    }
+                    if (args[i].equals("false")) {
+//                    System.out.println("[args] " + args[i]);
+                        pst.setObject(i + 1, 0);
+                        continue;
+                    }
+                    if (args[i].equals("true")) {
+//                    System.out.println("[args] " + args[i]);
+                        pst.setObject(i + 1, 1);
+                        continue;
+                    }
+                }
+//                System.out.println("fill sql arg:" + args[i]);
                 pst.setObject(i + 1, args[i]);
             }
         }
@@ -325,10 +401,34 @@ public class Operate {
                 Object value = rs.getObject(i + 1);//获取第几列的值
                 //(3)获取属性对象
                 Field field = clazz.getDeclaredField(fieldName);
-                //(4)设置可见性
-                field.setAccessible(true);
-                //(5)设置属性值
-                field.set(obj, value);
+//                System.out.println("[fieldName] " + field.getType().getTypeName());
+                if (field.getType().getTypeName().equals("boolean")) {
+                    //(4)设置可见性
+                    field.setAccessible(true);
+                    if (value.equals(1)) {
+                        field.set(obj, true);
+                    }
+                    if (value.equals(0)) {
+                        field.set(obj, false);
+                    }
+                } else if (field.getType().getTypeName().equals("java.util.Date")) {
+                    //(4)设置可见性
+                    field.setAccessible(true);
+//                    System.out.println("[select set value]" + fieldName);
+//                    field.set(obj, Timestamp.valueOf((LocalDateTime) value));
+//                    System.out.println("value type: "+value.getClass().getTypeName());
+//                    System.out.println(value.getClass().getTypeName());
+                    if (value.getClass().getTypeName().equals("java.sql.Date")) {
+                        field.set(obj, Common.sqlDateToJavaDate((Date) value));
+                    } else {
+                        field.set(obj, Common.localDateToDate((LocalDateTime) value));
+                    }
+                } else {
+                    //(4)设置可见性
+                    field.setAccessible(true);
+                    //(5)设置属性值
+                    field.set(obj, value);
+                }
             }
             //3、把 obj 对象放到集合中
             list.add(obj);
@@ -678,7 +778,8 @@ public class Operate {
                 System.out.println("执行根据实体类字段自动生成的方法: " + method.getName());
 
                 String cacheName = tbName + "." + method.getName();
-                if (isUseCache && cache.getCache(cacheName) != null && (cache.getCount(cacheName) % globalCacheQueryMaxCount) != 0) {
+                if (isUseCache && cache.getCache(cacheName) != null
+                        && (cache.getCount(cacheName) % globalCacheQueryMaxCount) != 0) {
                     System.out.println(uuid + ": 从缓存中读取");
                     cache.count(cacheName);
 
@@ -710,12 +811,14 @@ public class Operate {
                         return obj;
                     }
                     if (method.getName().contains("update")) {
-                        MysqlBuilder builder = MysqlBuilder.build().base("update tb_user set");
+                        MysqlBuilder builder = MysqlBuilder.build()
+                                .base("update " + tbName + " set");
                         // update set xxx=?
                         List<String> setParams = new ArrayList<>();
                         for (int i = 0; i < params.length; i++) {
                             // 不等于作为条件的字段
-                            if (!params[i].contains("id") && !methodList.get(method.getName()).equals(params[i])) {
+                            if (!params[i].contains("id")
+                                    && !methodList.get(method.getName()).equals(params[i])) {
                                 setParams.add(params[i]);
                             }
                         }
@@ -728,7 +831,10 @@ public class Operate {
                             // set x=?,
                             builder.set(setParams.get(i)).comma();
                         }
-                        sql = builder.where(methodList.get(method.getName()), SqlCompareIdentity.EQ).sql();
+                        sql = builder
+                                .where(methodList.get(method.getName()),
+                                        SqlCompareIdentity.EQ)
+                                .sql();
                         System.out.println("当前sql: " + sql);
                         int obj = update(sql, args);
 
@@ -770,6 +876,9 @@ public class Operate {
         Object proxyInstance = Proxy.newProxyInstance(Operate.class.getClassLoader(), new Class[]{mapperClass}, new InvocationHandler() {
             @Override
             public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+//                System.out.println("进入代理方法, 当前[method]: " + method.getName());
+//                System.out.println("进入代理方法, 当前[args]: " + Arrays.toString(args));
+
                 // 开始执行的时间
                 Instant start = Instant.now();
 
@@ -959,6 +1068,7 @@ public class Operate {
                         for (int i = 0; i < parseClazz.params.keySet().toArray().length; i++) {
                             paramNames[i] = parseClazz.params.keySet().toArray()[i].toString();
                         }
+                        System.out.println("[insert] param names: " + Arrays.toString(paramNames));
 
                         sql = MysqlBuilder.build().tbName(tbName).insert(paramNames).sql();
                         System.out.println(uuid + ": 执行insert方法");
@@ -969,6 +1079,8 @@ public class Operate {
                             paramVals[i] = parseClazz.params.values().toArray()[i].toString();
 //                                    System.out.println(paramVals[i]);
                         }
+                        System.out.println("[insert] params: " + Arrays.toString(paramVals));
+                        // 插入数据库
                         int res = update(sql, paramVals);
 
                         Instant end = Instant.now();
@@ -1207,16 +1319,21 @@ public class Operate {
                         return obj;
                     }
                     if (method.getName().contains("update")) {
-                        MysqlBuilder builder = MysqlBuilder.build().base("update tb_user set");
+                        MysqlBuilder builder = MysqlBuilder
+                                .build().base("update " + tbName + " set");
                         // update set xxx=?
                         List<String> setParams = new ArrayList<>();
+                        // [id, username, email, birthdate, isactive]
                         for (int i = 0; i < params.length; i++) {
                             // 不等于作为条件的字段
-                            if (!params[i].contains("id") && !methodList.get(method.getName()).equals(params[i])) {
+                            if (!params[i].contains("id")
+                                    && !methodList.get(method.getName()).equals(params[i])) {
                                 setParams.add(params[i]);
                             }
                         }
                         for (int i = 0; i < setParams.size(); i++) {
+//                            System.out.println("args[i]: " + args[i]);
+//                            System.out.println("param: " + setParams.get(i));
                             if (i == setParams.size() - 1) {
                                 // set x=?
                                 builder.set(setParams.get(i));
@@ -1225,7 +1342,10 @@ public class Operate {
                             // set x=?,
                             builder.set(setParams.get(i)).comma();
                         }
-                        sql = builder.where(methodList.get(method.getName()), SqlCompareIdentity.EQ).sql();
+                        sql = builder
+                                .where(methodList.get(method.getName()),
+                                        SqlCompareIdentity.EQ)
+                                .sql();
                         System.out.println("当前sql: " + sql);
                         int obj = update(sql, args);
 
@@ -1258,10 +1378,11 @@ public class Operate {
     private static ParseClazz parseObjectArgs(Object[] args) throws IllegalAccessException {
         Object arg = args[0];
         Field[] fields = arg.getClass().getDeclaredFields();
+        System.out.println("[parseObjectArgs] fields: " + Arrays.toString(fields));
         // 被修改的参数名
-//                                String[] paramNames = new String[fields.length];
+        // String[] paramNames = new String[fields.length];
         // 修改后的参数值
-//                                Object[] argVals = new Object[fields.length];
+        // Object[] argVals = new Object[fields.length];
         // <被修改的参数名,修改后的参数值>
         HashMap<String, Object> params = new HashMap<String, Object>();
         String idName = "id";
@@ -1279,6 +1400,8 @@ public class Operate {
                 continue;
             }
             if (fields[i].get(args[0]) != null) {
+                System.out.println("[parseObjectArgs] put param: "
+                        + fields[i].getName() + " " + fields[i].get(args[0]));
                 params.put(fields[i].getName(), fields[i].get(args[0]));
             }
         }
@@ -1311,6 +1434,32 @@ public class Operate {
 //        return instance;
 //    }
 
+    // 创建表
+    static void createTable(String sql) throws Exception {
+//        sql = "CREATE TABLE users (\n" +
+//                "    id INT AUTO_INCREMENT PRIMARY KEY,\n" +
+//                "    username VARCHAR(50) NOT NULL,\n" +
+//                "    email VARCHAR(100) NOT NULL,\n" +
+//                "    birthdate DATE,\n" +
+//                "    is_active BOOLEAN DEFAULT TRUE\n" +
+//                ");";
+        //1、注册驱动，不用了
+        //2、获取连接
+        Connection conn = JDBCUtils.getConn();
+        //3、对 sql 进行预编译
+        PreparedStatement pst = conn.prepareStatement(sql);
+        //4、对？进行设置值
+//        if (args != null && args.length > 0) {
+//            for (int i = 0; i < args.length; i++) {
+//                pst.setObject(i + 1, args[i]);
+//            }
+//        }
+        //5、执行 sql
+        int count = pst.executeUpdate();
+        JDBCUtils.close(conn, pst, null);
+        System.out.println(count);
+    }
+
     static class ParseClazz {
         HashMap<String, Object> params;
         String idName;
@@ -1334,4 +1483,5 @@ public class Operate {
             this.entityName = entityName;
         }
     }
+
 }

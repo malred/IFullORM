@@ -1,5 +1,7 @@
 # MalORM
 
+- 使用方法: 下载该库, 运行maven install, 在需要的项目中引用该库(org.malred.IFullORM)
+
 > 封装了JDBC的简单的ORM框架, 有3种风格的接口
 
 1. 类似jpa或mybaits-plus风格的接口, 定义接口继承BaseCRUDRepository, 就可以使用提供好的方法(通过动态代理实现)
@@ -307,6 +309,7 @@ public class t {
 ## 生成代码
 
 ```java
+
 @ScanEntity("entity")
 public class t {
     @Test
@@ -408,6 +411,117 @@ public class t {
         System.out.println("影响了" + cnt + "条数据");
 
         cnt = mapper.delete_by_username_gen("yyy");
+        System.out.println("影响了" + cnt + "条数据");
+    }
+}
+```
+
+# 更新: 自动建表, 以及提供建表字段注解
+
+> 调用框架scan方法, 会扫描传入方法的类的ScanEntity注解, 根据该注解value找到对应包, 扫描该包下所有类, 如果带有Entity注解,
+> 就会根据该注解value创建数据库表, 建表时根据提供的字段注解进行定制化建表
+
+目前可用建表字段注解(org.malred.annotations.table)
+
+- ID 表明是ID字段
+- AutoIncrement 主键自增
+- NotNull 不能为空
+- SQLCharLen varchar字段长度
+- SQLDateNow 默认date为当前时间
+- SQLDefault 字段默认值
+
+```java
+package entity;
+
+import org.malred.annotations.table.*;
+
+import java.util.Date;
+
+@Entity("tb_test")
+public class TbTest {
+    @ID()
+    @AutoIncrement()
+    int id;
+    @SQLCharLen(50)
+    String username;
+    @SQLDefault("1@1.com")
+    String email;
+    @SQLDateNow()
+    Date birthdate;
+    //    String birthdate;
+    @NotNull()
+    boolean is_active;
+
+    @Override
+    public String toString() {
+        return "TbTest{" +
+                "id=" + id +
+                ", username='" + username + '\'' +
+                ", email='" + email + '\'' +
+                ", birthdate=" + birthdate +
+                ", is_active=" + is_active +
+                '}';
+    }
+}
+```
+
+> 测试
+
+记得在生成repository后, 创建一个interface来extend该repository, 然后就可以操作了
+
+```java
+import dao.TestRepository;
+import dao.UserRepository;
+import entity.TbTest;
+import org.junit.Before;
+import org.junit.Test;
+import org.malred.annotations.table.*;
+import org.malred.cores.Operate;
+import org.malred.utils.Common;
+import org.malred.utils.JDBCUtils;
+
+import java.sql.Timestamp;
+import java.util.*;
+
+@ScanEntity("entity")
+public class testTableJDBC {
+    @Before
+    public void before() {
+        // 设置数据库属性
+        JDBCUtils
+                .setDataSource("jdbc:mysql://localhost:3306/mybatis",
+                        "com.mysql.cj.jdbc.Driver", "root", "123456");
+
+//        JDBCUtils.setSchema("mybatis");
+    }
+
+    // 创建表和repository, repository包含操作数据库的方法
+    @Test
+    public void tableRaw() throws Exception {
+        Operate.scan(testTableJDBC.class);
+        Operate.gen();
+    }
+
+    // 测试根据实体类字段自动生成的方法
+    @Test
+    public void testEntityParamGenFn() throws Exception {
+        Operate.scan(testTableJDBC.class);
+        // 扫描实体类
+        TestRepository mapper = Operate.getMapper(TestRepository.class, TbTest.class);
+
+        TbTest t = new TbTest();
+        t.setUsername("张三");
+        t.setIs_active(true);
+        mapper.insert(t);
+
+        List<TbTest> users = mapper.find_by_username_gen("张三");
+        System.out.println(users);
+
+        int cnt = 0;
+        cnt = mapper.update_by_email_gen("sss", new Date(), false, "1@1.com");
+        System.out.println("影响了" + cnt + "条数据");
+
+        cnt = mapper.delete_by_username_gen("sss");
         System.out.println("影响了" + cnt + "条数据");
     }
 }
