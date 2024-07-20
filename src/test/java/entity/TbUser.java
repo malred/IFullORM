@@ -1,7 +1,9 @@
 package entity;
 
 
+import org.malred.annotations.table.AutoIncrement;
 import org.malred.annotations.table.Entity;
+import org.malred.annotations.table.ID;
 
 import java.io.Serializable;
 
@@ -10,6 +12,8 @@ import java.io.Serializable;
 public class TbUser  {
 
     // can't cast Integer to Long
+    @ID()
+    @AutoIncrement()
     private int id;
     private String username;
     private String password;
