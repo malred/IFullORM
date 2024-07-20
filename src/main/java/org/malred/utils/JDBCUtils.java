@@ -185,13 +185,13 @@ public class JDBCUtils {
         String sql = "";
 
         Field field = aClass.getDeclaredField(name);
-        System.out.println("field: " + field.getName());
+//        System.out.println("field: " + field.getName());
         String typeName = field.getType().getTypeName();
 
         field.setAccessible(true);
         // 是不是主键
         if (field.isAnnotationPresent(ID.class)) {
-            System.out.println(name + "是主键");
+//            System.out.println(name + "是主键");
             sql += " PRIMARY KEY ";
             // 是否自增
             if (

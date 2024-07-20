@@ -103,8 +103,8 @@ public class Operate {
                         String sql = "create table " + tbName + " ( ";
                         for (String name : paramTypeMap.keySet()) {
                             String type = paramTypeMap.get(name);
-                            System.out.println("type: " + type);
-                            System.out.println("sql type: " + getSqlType(type));
+//                            System.out.println("type: " + type);
+//                            System.out.println("sql type: " + getSqlType(type));
                             if (Objects.equals(getSqlType(type), "")) {
                                 // paramTypeMap.remove(type);
                                 continue;
@@ -186,7 +186,7 @@ public class Operate {
 //                System.out.println(methodList);
                         methodMap.put(tbName, methodList);
                         paramsMap.put(tbName, params);
-                        System.out.println("params: " + Arrays.toString(params));
+//                        System.out.println("params: " + Arrays.toString(params));
 
 //                        uptParams = new HashMap<>();
                         uptParams = new LinkedHashMap<>();
@@ -194,7 +194,7 @@ public class Operate {
                             if (!s.contains("id")) {
                                 uptParams.put(s, paramGenMap.get(s));
                             }
-                            System.out.println(paramGenMap.get(s));
+//                            System.out.println(paramGenMap.get(s));
                         }
 //                        System.out.println(aClass.getTypeName());
 //                        System.out.println(aClass.getName());
@@ -270,7 +270,7 @@ public class Operate {
         if (args != null && args.length > 0) {
             //数组的下标是从 0 开始，？的编号是 1 开始
             for (int i = 0; i < args.length; i++) {
-                System.out.println(i);
+//                System.out.println(i);
 //                System.out.println("arg: " + args[i]);
                 if (args[i] != null) {
 //                    if (args[i].getClass().getTypeName().equals("java.util.Date")) {
@@ -417,7 +417,7 @@ public class Operate {
 //                    System.out.println("[select set value]" + fieldName);
 //                    field.set(obj, Timestamp.valueOf((LocalDateTime) value));
 //                    System.out.println("value type: "+value.getClass().getTypeName());
-                    System.out.println(value.getClass().getTypeName());
+//                    System.out.println(value.getClass().getTypeName());
                     if (value.getClass().getTypeName().equals("java.sql.Date")) {
                         field.set(obj, Common.sqlDateToJavaDate((Date) value));
                     } else {
@@ -876,8 +876,8 @@ public class Operate {
         Object proxyInstance = Proxy.newProxyInstance(Operate.class.getClassLoader(), new Class[]{mapperClass}, new InvocationHandler() {
             @Override
             public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-                System.out.println("进入代理方法, 当前[method]: " + method.getName());
-                System.out.println("进入代理方法, 当前[args]: " + Arrays.toString(args));
+//                System.out.println("进入代理方法, 当前[method]: " + method.getName());
+//                System.out.println("进入代理方法, 当前[args]: " + Arrays.toString(args));
 
                 // 开始执行的时间
                 Instant start = Instant.now();
